@@ -30,6 +30,7 @@ jobs:
         run: |
           python -m venv antenv
           source antenv/bin/activate
+          pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
@@ -63,4 +64,5 @@ jobs:
         with:
           app-name: 'munkiwebadmin'
           slot-name: 'Production'
+
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_6D557A7862F74D5789BAB44C94145FBE }}
