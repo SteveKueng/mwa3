@@ -10,7 +10,7 @@ azure-storage-blob==12.28.0
 whitenoise==6.9.0
 pyobjc==12.1
 urllib3>=2.2.0,<3.0.0
-Pillow==11.1.0
+Pillow==12.1.1
 python-magic==0.4.27
 django-ratelimit==4.1.0
 packaging>=24.0

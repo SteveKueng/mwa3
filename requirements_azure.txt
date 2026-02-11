@@ -8,4 +8,4 @@ django-auth-adfs==1.15.0
 setuptools==75.8.0
 azure-storage-blob==12.28.0
 whitenoise==6.9.0
-Pillow==11.1.0
+Pillow==12.1.1
