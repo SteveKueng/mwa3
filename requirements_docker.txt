@@ -1,6 +1,6 @@
 django==6.0.2
 psycopg2-binary==2.9.9
-gunicorn==23.0.0
+gunicorn==25.0.3
 mysqlclient==2.2.4
 django-cors-headers==4.7.0
 requests==2.32.3
