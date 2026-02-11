@@ -3,7 +3,7 @@
 ###########
 
 # pull official base image
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 # set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -62,7 +62,7 @@ RUN curl -Lk -o /tmp/munkitools.zip `curl --silent https://api.github.com/repos/
 #########
 
 # pull official base image
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # create the app user
 RUN groupadd -r app && useradd -r -g app app
