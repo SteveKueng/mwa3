@@ -1,4 +1,4 @@
-django==4.2.19
+django==6.0.2
 psycopg2-binary
 gunicorn==23.0.0
 django-cors-headers==4.7.0
