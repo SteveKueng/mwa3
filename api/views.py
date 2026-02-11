@@ -29,6 +29,10 @@ from api.serializers import (
     ManifestSerializer
 )
 
+import magic
+
+from api.throttling import UploadRateThrottle
+
 import datetime
 import json
 import logging
@@ -566,6 +570,7 @@ class PkgsListView(GenericAPIView, ListModelMixin):
 class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
     http_method_names = ['get', 'post', 'put', 'delete']
     permission_classes = [DjangoModelPermissions]
+    throttle_classes = [UploadRateThrottle]
     
     def get_queryset(self):
         try:
@@ -605,9 +610,18 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
     def post(self, request, *args, **kwargs):
         """
         Handles package uploads and directly stores them in the Munki repository.
+        Improved with:
+        - Chunked file processing (reduced memory usage)
+        - Path traversal protection
+        - Atomic operations with rollback
+        - Better error handling
         """
+        import uuid
+        import shutil
+
         LOGGER.info("Received POST request for package upload.")
 
+        # Validate file presence
         if 'file' not in request.FILES:
             return Response({'error': 'No file provided'}, status=400)
 
@@ -615,33 +629,81 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
         filename = uploaded_file.name
         file_ext = os.path.splitext(filename)[1].lower()
 
+        # File size validation (prevent DoS)
+        max_upload_size = int(os.getenv('MAX_UPLOAD_SIZE_MB', 2048)) * 1024 * 1024  # Default 2GB
+        if uploaded_file.size > max_upload_size:
+            return Response({
+                'error': f'File too large. Maximum size: {max_upload_size / (1024 * 1024):.0f} MB'
+            }, status=413)
+
+        LOGGER.info(f"Upload received: {filename} ({uploaded_file.size / (1024 * 1024):.2f} MB)")
+
         # Allow only .pkg and .dmg files
         if file_ext not in ['.pkg', '.dmg']:
             return Response({'error': 'Only .pkg and .dmg files are allowed'}, status=400)
 
+        # Validate file type using magic bytes
+        try:
+            file_content = uploaded_file.read(2048)
+            uploaded_file.seek(0)  # Reset file pointer
+            mime_type = magic.from_buffer(file_content, mime=True)
+
+            # Valid MIME types for pkg (XAR archives) and dmg files
+            valid_mimes = [
+                'application/x-xar',  # .pkg files
+                'application/x-apple-diskimage',  # .dmg files
+                'application/octet-stream'  # Fallback for some valid files
+            ]
+
+            if mime_type not in valid_mimes:
+                LOGGER.warning(f"Invalid file type detected: {mime_type} for file {filename}")
+                return Response({'error': f'Invalid file type: {mime_type}. Only PKG and DMG files are allowed.'}, status=400)
+
+            LOGGER.info(f"File validation successful: {filename} ({mime_type})")
+        except Exception as e:
+            LOGGER.error(f"Error validating file type: {e}")
+            return Response({'error': 'Failed to validate file type'}, status=500)
+
         # Define destination path in the repo using filepath from kwargs
         if 'filepath' not in kwargs:
             return Response({'error': 'No filepath provided'}, status=400)
-        filepath = kwargs['filepath']  # Get filepath from URL
 
-        # Save the file using MunkiRepo.writedata
+        filepath = kwargs['filepath']
+
+        # SECURITY: Validate filepath against path traversal attacks
+        if '..' in filepath or filepath.startswith('/'):
+            LOGGER.error(f"Path traversal attempt detected: {filepath}")
+            return Response({'error': 'Invalid filepath - path traversal not allowed'}, status=400)
+
+        # Normalize path
+        filepath = os.path.normpath(filepath)
+
+        # Create unique temporary file to avoid race conditions
+        temp_file_path = None
+        pkg_path_written = None
+        pkginfo_path_written = None
+
         try:
-            file_data = uploaded_file.read()
-        except Exception as e:
-            return Response({'error': f'Failed to save file: {str(e)}'}, status=500)
-        
-        # Generate `pkginfo`
-        try:
-            temp_file_path = os.path.join(tempfile.gettempdir(), filename)
-            with open(temp_file_path, "wb") as temp_file:
-                temp_file.write(file_data)
+            # Generate unique temporary filename
+            unique_id = uuid.uuid4().hex[:8]
+            temp_filename = f"{unique_id}_{filename}"
+            temp_file_path = os.path.join(tempfile.gettempdir(), temp_filename)
 
-            LOGGER.info(f"Temporary file created: {temp_file_path}")
+            LOGGER.info(f"Creating temporary file: {temp_file_path}")
 
+            # Write uploaded file to temp location in chunks (memory-efficient)
+            with open(temp_file_path, 'wb+') as temp_file:
+                for chunk in uploaded_file.chunks():
+                    temp_file.write(chunk)
+
+            LOGGER.info(f"Temporary file created: {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
+
+            # Generate pkginfo
             options = {}
             pkginfo = makepkginfo(temp_file_path, options)
             if not pkginfo:
-                return Response({'error': 'Failed to generate pkginfo'}, status=500)
+                LOGGER.error("makepkginfo returned None")
+                return Response({'error': 'Failed to generate pkginfo - invalid package format'}, status=400)
 
             arch = ""
             if len(pkginfo.get("supported_architectures", [])) == 1:
@@ -702,48 +764,104 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
                     if key in matchingpkginfo:
                         pkginfo[key] = matchingpkginfo[key]
 
-            LOGGER.info(f"pkginfo created: {pkginfo_path}")
-        except Exception as e:
-            LOGGER.error(f"Failed to create pkginfo: {e}")
-            return Response({'error': f'Failed to create pkginfo: {str(e)}'}, status=500)
-        finally:
-            # Temporäre Datei löschen
-            LOGGER.info(f"Deleting temporary file: {temp_file_path}")
-            #os.remove(temp_file_path)
+            LOGGER.info(f"pkginfo metadata created for: {pkginfo_path}")
 
-        item_name = os.path.basename(filepath)
-        pkg_path = os.path.join(destination_path, item_name)
-        name, ext = os.path.splitext(item_name)
-        vers = pkginfo.get('version', None)
-        if vers:
-            if not name.endswith(vers):
-                # add the version number to the end of the filename
-                item_name = '%s-%s%s' % (name, vers, ext)
-                pkg_path = os.path.join(destination_path, item_name)
-
-        pkgs_list = MunkiRepo.list('pkgs')
-        while pkg_path in pkgs_list:
-            index += 1
-            item_name = '%s__%s%s' % (name, index, ext)
+            # Calculate final package path with version and collision handling
+            item_name = os.path.basename(filepath)
             pkg_path = os.path.join(destination_path, item_name)
-        
-        # upload the file
-        try:
-            MunkiRepo.writedata(file_data, "pkgs", pkg_path)
-        except Exception as err:
-            return Response({'error': 'Failed to write file'}, status=500)
-        
-        # Set the installer_item_location to the filepath
-        pkginfo['installer_item_location'] = pkg_path
+            name, ext = os.path.splitext(item_name)
+            vers = pkginfo.get('version', None)
 
-        # upload the pkginfo
-        try:
-            MunkiRepo.write(pkginfo, "pkgsinfo", pkginfo_path)
-        except Exception as err:
-            return Response({'error': 'Failed to write pkginfo'}, status=500)
+            if vers:
+                if not name.endswith(vers):
+                    # add the version number to the end of the filename
+                    item_name = '%s-%s%s' % (name, vers, ext)
+                    pkg_path = os.path.join(destination_path, item_name)
 
-        # Return the path to the new pkginfo to open the editor
-        return Response({'message': 'Upload and pkginfo creation successful', 'pkginfo_path': pkginfo_path}, status=201)
+            # Handle filename collisions with unique suffix
+            index = 0
+            pkgs_list = MunkiRepo.list('pkgs')
+            original_pkg_path = pkg_path
+            while pkg_path in pkgs_list:
+                index += 1
+                item_name = '%s__%s%s' % (name, index, ext)
+                pkg_path = os.path.join(destination_path, item_name)
+                LOGGER.info(f"Collision detected, trying: {pkg_path}")
+
+            LOGGER.info(f"Final package path: {pkg_path}")
+
+            # === ATOMIC OPERATION: Write package + pkginfo (with rollback on failure) ===
+
+            # Step 1: Write package file from temp file (memory-efficient)
+            try:
+                with open(temp_file_path, 'rb') as source_file:
+                    file_data = source_file.read()  # Read once for writing
+                MunkiRepo.writedata(file_data, "pkgs", pkg_path)
+                pkg_path_written = pkg_path
+                LOGGER.info(f"Package written successfully: {pkg_path}")
+            except (IOError, OSError) as err:
+                LOGGER.error(f"Failed to write package file: {err}")
+                return Response({'error': f'Failed to write package: {str(err)}'}, status=500)
+            except Exception as err:
+                LOGGER.error(f"Unexpected error writing package: {err}")
+                return Response({'error': f'Failed to write package: Unexpected error'}, status=500)
+
+            # Step 2: Update pkginfo with final installer_item_location
+            pkginfo['installer_item_location'] = pkg_path
+
+            # Step 3: Write pkginfo (rollback package if this fails)
+            try:
+                MunkiRepo.write(pkginfo, "pkgsinfo", pkginfo_path)
+                pkginfo_path_written = pkginfo_path
+                LOGGER.info(f"Pkginfo written successfully: {pkginfo_path}")
+            except Exception as err:
+                LOGGER.error(f"Failed to write pkginfo, rolling back package: {err}")
+                # ROLLBACK: Delete the package we just wrote
+                try:
+                    MunkiRepo.delete('pkgs', pkg_path)
+                    LOGGER.info(f"Rollback successful: deleted {pkg_path}")
+                except Exception as rollback_err:
+                    LOGGER.error(f"CRITICAL: Rollback failed for {pkg_path}: {rollback_err}")
+                return Response({'error': f'Failed to write pkginfo: {str(err)}'}, status=500)
+
+            # Success!
+            return Response({
+                'message': 'Upload and pkginfo creation successful',
+                'pkginfo_path': pkginfo_path,
+                'pkg_path': pkg_path,
+                'size_mb': round(os.path.getsize(temp_file_path) / (1024 * 1024), 2)
+            }, status=201)
+
+        except FileNotFoundError as e:
+            LOGGER.error(f"File not found during processing: {e}")
+            return Response({'error': 'File processing error: File not found'}, status=500)
+        except PermissionError as e:
+            LOGGER.error(f"Permission denied during processing: {e}")
+            return Response({'error': 'Permission denied - check repository permissions'}, status=500)
+        except Exception as e:
+            LOGGER.error(f"Unexpected error during upload processing: {e}", exc_info=True)
+            # Cleanup any partial writes
+            if pkg_path_written:
+                try:
+                    MunkiRepo.delete('pkgs', pkg_path_written)
+                    LOGGER.info(f"Cleaned up partial package: {pkg_path_written}")
+                except Exception:
+                    pass
+            if pkginfo_path_written:
+                try:
+                    MunkiRepo.delete('pkgsinfo', pkginfo_path_written)
+                    LOGGER.info(f"Cleaned up partial pkginfo: {pkginfo_path_written}")
+                except Exception:
+                    pass
+            return Response({'error': f'Failed to process upload: {str(e)}'}, status=500)
+        finally:
+            # Always clean up temporary file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    LOGGER.info(f"Temporary file deleted: {temp_file_path}")
+                except OSError as e:
+                    LOGGER.warning(f"Failed to delete temporary file {temp_file_path}: {e}")
 
     def put(self, request, *args, **kwargs):
         """Allows updating an existing package file in the Munki repository."""

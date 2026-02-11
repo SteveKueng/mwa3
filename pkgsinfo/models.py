@@ -7,7 +7,7 @@ import os
 import logging
 import functools
 from collections import defaultdict
-from distutils.version import LooseVersion
+from packaging.version import parse as parse_version
 from multiprocessing.pool import ThreadPool
 from xml.parsers.expat import ExpatError
 
@@ -93,7 +93,7 @@ class Pkginfo(MunkiRepo):
 
         def compare_versions(a, b):
             """Internal comparison function for use in sorting"""
-            return cmp(LooseVersion(b[0]), LooseVersion(a[0]))
+            return cmp(parse_version(b[0]), parse_version(a[0]))
         record(message='Starting scan of pkgsinfo data')
         files = cls.list('pkgsinfo')
         record(message='Processing %s files' % len(files))

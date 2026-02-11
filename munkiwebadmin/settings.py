@@ -20,8 +20,16 @@ DEFAULT_MANIFEST = os.getenv('DEFAULT_MANIFEST', 'serial_number')
 SECRET_KEY = os.environ.get("SECRET_KEY", "CHANGEME!!!")
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1 [::1]").split(" ")
 CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost").split(" ")
-CSRF_COOKIE_SECURE = False  # Set to True if using HTTPS
-CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True').lower() in ('true', '1', 't')
+CSRF_COOKIE_HTTPONLY = True
+
+# Security Headers
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
 
 # Munki repo settings
 MUNKI_REPO_URL = os.getenv('MUNKI_REPO_URL', 'file:///munkirepo')
@@ -33,6 +41,15 @@ MUNKI_REPO_PLUGIN = os.getenv('MUNKI_REPO_PLUGIN', 'FileRepo')
 MUNKITOOLS_DIR = os.getenv('MUNKITOOLS_DIR', '/munkitools')
 if not os.path.exists(MUNKITOOLS_DIR):
     MUNKITOOLS_DIR = os.path.join(BASE_DIR, 'munkitools')
+
+# File Upload Settings
+# Maximum upload size in bytes (default: 2GB for large packages)
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('MAX_UPLOAD_MEMORY_SIZE_MB', 10)) * 1024 * 1024  # 10MB before writing to temp file
+FILE_UPLOAD_MAX_MEMORY_SIZE = DATA_UPLOAD_MAX_MEMORY_SIZE
+# Files larger than this will be streamed to disk
+FILE_UPLOAD_HANDLERS = [
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler',
+]
 
 # Azure AD settings
 CLIENT_ID = os.getenv('CLIENT_ID', 'ID')
@@ -251,11 +268,40 @@ LOGGING = {
     },
 }
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+# Cache Configuration
+# For production, use Redis or Memcached
+# Configure via CACHE_BACKEND environment variable
+CACHE_BACKEND = os.getenv('CACHE_BACKEND', 'locmem')
+
+if CACHE_BACKEND == 'redis':
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            },
+            "KEY_PREFIX": "mwa3",
+            "TIMEOUT": 300,  # 5 minutes default
+        }
     }
-}
+elif CACHE_BACKEND == 'memcached':
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.memcached.PyMemcacheCache",
+            "LOCATION": os.getenv('MEMCACHED_LOCATION', '127.0.0.1:11211'),
+            "KEY_PREFIX": "mwa3",
+            "TIMEOUT": 300,
+        }
+    }
+else:
+    # Default to local memory cache (development only)
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "unique-mwa3",
+        }
+    }
 
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
@@ -281,7 +327,16 @@ REST_FRAMEWORK = {
         'django_auth_adfs.rest_framework.AdfsAccessTokenAuthentication',
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
-    )
+    ),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv('THROTTLE_ANON', '100/hour'),
+        'user': os.getenv('THROTTLE_USER', '1000/hour'),
+        'uploads': os.getenv('THROTTLE_UPLOADS', '10/hour'),
+    }
 }
 
 # azure adfs settings

@@ -62,8 +62,6 @@ def fetch_and_store_user_photo(sender, user, claims, adfs_response, **kwargs):
         logger.warning("No access token available, skipping profile picture update.")
         return
 
-    logger.info(f"Received user access token: {access_token[:30]}...")
-
     # Retrieve a Microsoft Graph API token using On-Behalf-Of flow
     graph_token = get_graph_token(access_token)
     if graph_token:

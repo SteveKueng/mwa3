@@ -887,11 +887,25 @@ function resetUploadForm() {
 
 function showAlert(message, type = "success") {
     var alertContainer = document.getElementById("uploadAlertContainer");
-    var alertHTML = `
-        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    `;
-    alertContainer.innerHTML = alertHTML;
+
+    // Create elements safely to prevent XSS
+    var alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.setAttribute('role', 'alert');
+
+    // Set message as text content (safe from XSS)
+    alertDiv.textContent = message;
+
+    // Create close button
+    var closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'btn-close';
+    closeButton.setAttribute('data-bs-dismiss', 'alert');
+    closeButton.setAttribute('aria-label', 'Close');
+
+    alertDiv.appendChild(closeButton);
+
+    // Clear and append
+    alertContainer.innerHTML = "";
+    alertContainer.appendChild(alertDiv);
 }
