@@ -50,7 +50,7 @@ docker-compose -f docker-compose.prod.yml up -d
 ### Manual Installation
 
 #### Requirements
-- Python 3.11+
+- Python 3.14+
 - PostgreSQL, MySQL, or SQLite
 - libmagic (for file type validation)
 
@@ -58,7 +58,7 @@ docker-compose -f docker-compose.prod.yml up -d
 
 1. Install system dependencies (Ubuntu/Debian):
 ```bash
-apt-get install python3.11 python3-pip libmagic1 postgresql-client
+apt-get install python3.14 python3-pip libmagic1 postgresql-client
 ```
 
 2. Clone and install Python dependencies:
