@@ -17,6 +17,7 @@ RUN apt-get update \
     build-essential libssl-dev libffi-dev libjpeg-dev \
     libpq-dev liblcms2-dev libblas-dev libatlas-base-dev pkg-config curl unzip \
     git fuse3 libfuse3-dev golang p7zip-full \
+    libmagic1t64 \
     && rm -rf /var/lib/apt/lists/*
 # -------
 

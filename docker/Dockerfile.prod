@@ -37,6 +37,7 @@ RUN apt-get update \
     libfuse3-dev \
     golang \
     p7zip-full \
+    libmagic1t64 \
     && rm -rf /var/lib/apt/lists/*
 
 # set work directory
