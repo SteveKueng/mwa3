@@ -62,10 +62,13 @@ def getjson(request):
     displays the list of pkginfo items. Perhaps could be moved into the
     index methods'''
     LOGGER.debug("Got json request for pkgsinfo")
-    pkginfo_list = Pkginfo.data()
-    # send it back in JSON format
-    return HttpResponse(json.dumps(pkginfo_list),
-                        content_type='application/json')
+    try:
+        pkginfo_list = Pkginfo.data()
+    except Exception as err:
+        LOGGER.exception('Failed to build pkgsinfo JSON: %s', err)
+        return JsonResponse({'error': 'Failed to load pkgsinfo list'}, status=500)
+
+    return JsonResponse(pkginfo_list, safe=False)
 
 @login_required
 def index(request):

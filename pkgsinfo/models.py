@@ -45,8 +45,8 @@ def process_file(pkginfo_path):
     file and returns a tuple of name, version, catalogs, and relative path'''
     try:
         pkginfo = MunkiRepo.read('pkgsinfo', pkginfo_path)
-    except (ExpatError, IOError):
-        return ()
+    except (ExpatError, IOError, FileReadError):
+        return None
     return (pkginfo.get('name', 'NO_NAME'),
             pkginfo.get('display_name', 'NO_DISPLAY_NAME'),
             pkginfo.get('version', 'NO_VERSION'),
@@ -95,11 +95,23 @@ class Pkginfo(MunkiRepo):
             """Internal comparison function for use in sorting"""
             return cmp(parse_version(b[0]), parse_version(a[0]))
         record(message='Starting scan of pkgsinfo data')
-        files = cls.list('pkgsinfo')
+        try:
+            files = cls.list('pkgsinfo')
+        except Exception as err:
+            LOGGER.exception('Failed to list pkgsinfo: %s', err)
+            record(message='Failed to list pkgsinfo files')
+            return []
         record(message='Processing %s files' % len(files))
-        all_items = cls.read('catalogs', 'all')
+
+        # Prefer the "catalogs/all" file for performance, but fall back to
+        # reading individual pkgsinfo files if it doesn't exist yet.
+        try:
+            all_items = cls.read('catalogs', 'all')
+        except FileReadError:
+            all_items = []
+            LOGGER.debug("'catalogs/all' missing or unreadable; falling back to slower approach")
         use_slower_approach = False
-        if len(all_items) != len(files):
+        if not all_items or len(all_items) != len(files):
             LOGGER.debug('number of files differ from all catalog')
             use_slower_approach = True
         #elif any_files_in_list_newer_than(files, all_catalog):
@@ -113,7 +125,10 @@ class Pkginfo(MunkiRepo):
             # to speed things up a bit since we wait a lot for I/O
             pool = ThreadPool(processes=4)
             tuples = pool.map(process_file, files)
-            for name, display_name, version, catalogs, pathname in tuples:
+            for result in tuples:
+                if not result:
+                    continue
+                name, display_name, version, catalogs, pathname = result
                 pkginfo_dict[name].append((version, catalogs, pathname, display_name))
         else:
             LOGGER.debug("using faster approach")
