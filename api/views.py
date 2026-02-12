@@ -29,9 +29,9 @@ from api.serializers import (
     ManifestSerializer
 )
 
-# python-magic depends on the OS library "libmagic". On some platforms (notably
-# Azure App Service zip deployments) this library may be absent, so importing
-# magic must not prevent the app from starting.
+# python-magic requires the system library "libmagic". Some deployments (e.g.
+# Azure App Service zip deploy) don't include it, so we must not hard-fail on
+# import.
 try:
     import magic as _magic  # type: ignore
 except Exception:  # pragma: no cover
@@ -62,16 +62,18 @@ MUNKITOOLS_DIR = settings.MUNKITOOLS_DIR
 def _detect_upload_mime_type(file_content: bytes, filename: str) -> str | None:
     """Best-effort MIME detection.
 
-    Prefer libmagic when available; otherwise fall back to mimetypes.
+    - Prefer libmagic (python-magic) when available.
+    - Otherwise fall back to mimetypes + minimal signature checks.
     """
     if magic is not None:
         return magic.from_buffer(file_content, mime=True)
+
     guessed, _ = mimetypes.guess_type(filename)
     return guessed
 
 
 def _xar_signature_ok(file_content: bytes) -> bool:
-    # PKG files are typically XAR archives which start with b"xar!".
+    # .pkg files are typically XAR archives which start with b"xar!".
     return file_content.startswith(b"xar!")
 
 # import munkitools
@@ -679,8 +681,8 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
                 'application/octet-stream'  # Fallback for some valid files
             ]
 
-            # Without libmagic, MIME detection may be weak. Keep a minimal
-            # signature check for PKG to avoid accepting obvious junk.
+            # If libmagic isn't available, MIME detection may be weak. Keep a
+            # minimal signature check for PKG to avoid accepting obvious junk.
             if magic is None and file_ext == '.pkg' and not _xar_signature_ok(file_content):
                 LOGGER.warning(f"Invalid PKG signature for file {filename}")
                 return Response({'error': 'Invalid PKG file signature. Only PKG and DMG files are allowed.'}, status=400)
@@ -688,6 +690,9 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
             if magic is not None and mime_type not in valid_mimes:
                 LOGGER.warning(f"Invalid file type detected: {mime_type} for file {filename}")
                 return Response({'error': f'Invalid file type: {mime_type}. Only PKG and DMG files are allowed.'}, status=400)
+
+            if magic is None:
+                LOGGER.warning("libmagic not available; falling back to extension/signature validation")
 
             LOGGER.info(f"File validation successful: {filename} ({mime_type})")
         except Exception as e:
