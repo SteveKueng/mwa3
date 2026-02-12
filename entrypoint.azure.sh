@@ -2,7 +2,7 @@
 
 # install dependencies
 apt-get update
-apt-get install -y p7zip-full
+apt-get install -y p7zip-full libmagic1t64
 
 # migrate database
 python manage.py makemigrations catalogs pkgsinfo manifests icons santa process munkiwebadmin

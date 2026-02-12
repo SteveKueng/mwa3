@@ -29,7 +29,15 @@ from api.serializers import (
     ManifestSerializer
 )
 
-import magic
+# python-magic depends on the OS library "libmagic". On some platforms (notably
+# Azure App Service zip deployments) this library may be absent, so importing
+# magic must not prevent the app from starting.
+try:
+    import magic as _magic  # type: ignore
+except Exception:  # pragma: no cover
+    _magic = None
+
+magic = _magic
 
 from api.throttling import UploadRateThrottle
 
@@ -49,6 +57,22 @@ import platform
 
 LOGGER = logging.getLogger('munkiwebadmin')
 MUNKITOOLS_DIR = settings.MUNKITOOLS_DIR
+
+
+def _detect_upload_mime_type(file_content: bytes, filename: str) -> str | None:
+    """Best-effort MIME detection.
+
+    Prefer libmagic when available; otherwise fall back to mimetypes.
+    """
+    if magic is not None:
+        return magic.from_buffer(file_content, mime=True)
+    guessed, _ = mimetypes.guess_type(filename)
+    return guessed
+
+
+def _xar_signature_ok(file_content: bytes) -> bool:
+    # PKG files are typically XAR archives which start with b"xar!".
+    return file_content.startswith(b"xar!")
 
 # import munkitools
 sys.path.append(MUNKITOOLS_DIR)
@@ -646,7 +670,7 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
         try:
             file_content = uploaded_file.read(2048)
             uploaded_file.seek(0)  # Reset file pointer
-            mime_type = magic.from_buffer(file_content, mime=True)
+            mime_type = _detect_upload_mime_type(file_content, filename) or 'application/octet-stream'
 
             # Valid MIME types for pkg (XAR archives) and dmg files
             valid_mimes = [
@@ -655,7 +679,13 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
                 'application/octet-stream'  # Fallback for some valid files
             ]
 
-            if mime_type not in valid_mimes:
+            # Without libmagic, MIME detection may be weak. Keep a minimal
+            # signature check for PKG to avoid accepting obvious junk.
+            if magic is None and file_ext == '.pkg' and not _xar_signature_ok(file_content):
+                LOGGER.warning(f"Invalid PKG signature for file {filename}")
+                return Response({'error': 'Invalid PKG file signature. Only PKG and DMG files are allowed.'}, status=400)
+
+            if magic is not None and mime_type not in valid_mimes:
                 LOGGER.warning(f"Invalid file type detected: {mime_type} for file {filename}")
                 return Response({'error': f'Invalid file type: {mime_type}. Only PKG and DMG files are allowed.'}, status=400)
 
