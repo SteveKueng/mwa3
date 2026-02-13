@@ -7,6 +7,20 @@ function do_resize() {
 $(window).resize(do_resize);
 
 $(document).ready(function() {
+    // Add CSRF header to all unsafe jQuery AJAX requests (POST/PUT/PATCH/DELETE).
+    // Required because many requests send JSON/XML bodies (no form csrf token).
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            var method = (settings.type || '').toUpperCase();
+            if (!/^(GET|HEAD|OPTIONS|TRACE)$/.test(method) && !this.crossDomain) {
+                var token = getCSRFToken();
+                if (token) {
+                    xhr.setRequestHeader('X-CSRFToken', token);
+                }
+            }
+        }
+    });
+
     initPkginfoTable();
     hash = window.location.hash;
     if (hash.length > 1) {
@@ -859,6 +873,15 @@ function uploadPackage() {
 
 // Get CSRF token from cookies
 function getCSRFToken() {
+    // Prefer meta tag (works even when csrftoken cookie is HttpOnly)
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) {
+        var metaToken = meta.getAttribute('content');
+        if (metaToken && metaToken !== 'NOTPROVIDED') {
+            return metaToken;
+        }
+    }
+
     let cookieValue = null;
     let cookies = document.cookie.split(';');
     for (let i = 0; i < cookies.length; i++) {

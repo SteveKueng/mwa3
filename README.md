@@ -311,3 +311,48 @@ MunkiWebAdmin is built on:
 ---
 
 **Note**: This is version 3 of MunkiWebAdmin, a complete rewrite with modern architecture and security best practices.
+
+## Environment Variables (Review)
+
+This project is configured primarily via environment variables. Values are read from your shell environment and/or an `.env` file (Docker Compose uses `env_file`). Lists like `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are **space-separated**.
+
+### Docker Compose Variables
+
+These control how Compose runs locally and are optional:
+
+- `MWA_PORT` (default `8080`): Host port published to container port 80.
+- `DOCKER_PLATFORM` (default `linux/amd64`): Useful on Apple Silicon when an image or dependency is amd64-only.
+
+### Django / App Variables
+
+Minimum recommended variables:
+
+- `SECRET_KEY`: Required for production (set a unique value).
+- `DEBUG` (`True`/`False`): Defaults to `False`.
+- `APPNAME`: Visible app name.
+
+Host/CSRF (important when running behind a real hostname):
+
+- `ALLOWED_HOSTS`: Space-separated, e.g. `munkiwebadmin.example.com`.
+- `CSRF_TRUSTED_ORIGINS`: Space-separated origins (scheme + host), e.g. `https://munkiwebadmin.example.com`.
+- `SECURE_SSL_REDIRECT` (`True`/`False`): Enable if you are serving HTTPS (often behind a reverse proxy).
+- `CSRF_COOKIE_SECURE` (`True`/`False`): Optional override. If unset, it defaults to the value of `SECURE_SSL_REDIRECT`.
+- `CSRF_COOKIE_HTTPONLY` (`True`/`False`): Defaults to `True`. The UI reads the CSRF token from a `<meta>` tag, so this can stay `True`.
+
+### Database Variables
+
+For Postgres (Docker Compose example):
+
+- `DB=postgres`
+- `DB_HOST=db`
+- `DB_PORT=5432`
+- `DB_NAME=munkiwebadmin`
+- `DB_USER=munkiwebadmin_user`
+- `DB_PASS=...`
+
+### Munki Repository Variables
+
+- `MUNKI_REPO_URL`: Defaults to `file:///munkirepo`.
+- `MUNKI_REPO_PLUGIN`: Defaults to `FileRepo`.
+
+If you use the Azure Blob plugin (`AzureRepo`), the plugin expects additional Azure-related environment variables (for example a SAS token). The exact variable names and format are defined by the MunkiAzurePlugin implementation.

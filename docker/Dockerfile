@@ -39,6 +39,13 @@ RUN mkdir /munkitools
 RUN curl -Lk -o /tmp/munkitools.zip `curl --silent https://api.github.com/repos/munki/munki/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` && unzip /tmp/munkitools.zip -d /tmp/munkitools && rm -rf /tmp/munkitools.zip 
 RUN cp -r /tmp/munkitools/munki-munki*/code/client/* /munkitools && rm -rf /tmp/munkitools
 
+# Install AzureRepo plugin (MunkiAzurePlugin)
+RUN curl -Lk -o /tmp/MunkiAzurePlugin.zip `curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` \
+    && unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin \
+    && rm -rf /tmp/MunkiAzurePlugin.zip \
+    && cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py /munkitools/munkilib/munkirepo/ \
+    && rm -rf /tmp/MunkiAzurePlugin
+
 VOLUME [ "/munkirepo" ]
 
 # run entrypoint.sh

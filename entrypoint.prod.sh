@@ -9,25 +9,25 @@ NUM_WORKERS=3                                 # how many worker processes should
 DJANGO_SETTINGS_MODULE=munkiwebadmin.settings # which settings file should Django use
 
 # mount azure blob storage 
-if [ "$AZURE_STORAGE_BLOB_ENDPOINT" != "" ]; then
+if [ -n "${AZURE_STORAGE_BLOB_ENDPOINT:-}" ]; then
   blobfuse2 mount /munkirepo/
 fi
 
-if [ "$DATABASE" == "postgres" ]; then
-    echo "Waiting for postgres..."
+echo "Waiting for postgres..."
 
-    while ! nc -z $SQL_HOST $SQL_PORT; do
-      sleep 0.1
-    done
+sql_host="${DB_HOST:-db}"
+sql_port="${DB_PORT:-5432}"
 
-    echo "PostgreSQL started"
-fi
+while ! nc -z "$sql_host" "$sql_port"; do
+  sleep 0.2
+done
+
+echo "PostgreSQL started"
 
 # migrate database
-python manage.py makemigrations catalogs, process, pkgsinfo, manifests, icons, santa, munkiwebadmin
-python manage.py migrate
+python manage.py migrate --noinput --run-syncdb
 
-echo "Starting $NAME as `whoami`"
+echo "Starting $NAME as $(whoami)"
 
 export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
 

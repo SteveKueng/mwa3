@@ -54,6 +54,7 @@ import sys
 import io
 import tempfile
 import platform
+import hashlib
 
 LOGGER = logging.getLogger('munkiwebadmin')
 MUNKITOOLS_DIR = settings.MUNKITOOLS_DIR
@@ -89,6 +90,57 @@ if platform.system() == "Darwin":
     from munkilib.admin.pkginfolib import makepkginfo
 else:
     from api.utils.munkiimport_linux import makepkginfo
+
+
+def _guess_version_from_filename(filename: str) -> str:
+    """Best-effort version extraction from a filename.
+
+    Examples:
+    - Foo-1.2.3.dmg -> 1.2.3
+    - Foo_2024.01.pkg -> 2024.01
+    """
+    base = os.path.basename(filename)
+    base = os.path.splitext(base)[0]
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+){1,})(?!\d)", base)
+    return match.group(1) if match else "0"
+
+
+def _sha256_hex(file_path: str) -> str:
+    h = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _minimal_pkginfo_for_uninspectable_dmg(file_path: str, filename: str) -> dict:
+    """Fallback pkginfo for DMGs we can't introspect on Linux.
+
+    Some DMGs (notably APFS-based images) cannot be reliably unpacked in a
+    container without extra tooling/capabilities. In that case we still want the
+    upload to succeed so the admin can manually edit the generated pkginfo.
+    """
+    name = os.path.splitext(os.path.basename(filename))[0]
+    version = _guess_version_from_filename(filename)
+    try:
+        itemsize_kb = int(os.path.getsize(file_path) / 1024)
+    except OSError:
+        itemsize_kb = 0
+    try:
+        itemhash = _sha256_hex(file_path)
+    except OSError:
+        itemhash = "N/A"
+
+    return {
+        'name': name,
+        'version': version,
+        'catalogs': ['testing'],
+        'description': 'Auto-generated: DMG metadata could not be inspected on this host. Edit this pkginfo before using in production.',
+        'minimum_os_version': '10.4.0',
+        'installer_item_size': itemsize_kb,
+        'installer_item_hash': itemhash,
+        'supported_architectures': [],
+    }
 
 
 def normalize_value_for_filtering(value):
@@ -735,10 +787,27 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
 
             # Generate pkginfo
             options = {}
-            pkginfo = makepkginfo(temp_file_path, options)
+            try:
+                pkginfo = makepkginfo(temp_file_path, options)
+            except Exception as e:
+                if file_ext == '.dmg':
+                    LOGGER.warning(
+                        f"makepkginfo failed for DMG upload {filename}; falling back to minimal pkginfo: {e}",
+                        exc_info=True,
+                    )
+                    pkginfo = _minimal_pkginfo_for_uninspectable_dmg(temp_file_path, filename)
+                else:
+                    raise
+
             if not pkginfo:
-                LOGGER.error("makepkginfo returned None")
-                return Response({'error': 'Failed to generate pkginfo - invalid package format'}, status=400)
+                if file_ext == '.dmg':
+                    LOGGER.warning(
+                        f"makepkginfo returned empty for DMG upload {filename}; falling back to minimal pkginfo"
+                    )
+                    pkginfo = _minimal_pkginfo_for_uninspectable_dmg(temp_file_path, filename)
+                else:
+                    LOGGER.error("makepkginfo returned None")
+                    return Response({'error': 'Failed to generate pkginfo - invalid package format'}, status=400)
 
             arch = ""
             if len(pkginfo.get("supported_architectures", [])) == 1:

@@ -57,6 +57,13 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requir
 # download munkitools
 RUN curl -Lk -o /tmp/munkitools.zip `curl --silent https://api.github.com/repos/munki/munki/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` && unzip /tmp/munkitools.zip -d /tmp/munkitools && rm -rf /tmp/munkitools.zip 
 
+# Install AzureRepo plugin (MunkiAzurePlugin) into the munkitools tree
+RUN curl -Lk -o /tmp/MunkiAzurePlugin.zip `curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` \
+    && unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin \
+    && rm -rf /tmp/MunkiAzurePlugin.zip \
+    && cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py /tmp/munkitools/munki-munki-*/code/client/munkilib/munkirepo/ \
+    && rm -rf /tmp/MunkiAzurePlugin
+
 
 #########
 # FINAL #
@@ -69,7 +76,9 @@ FROM python:3.14-slim
 RUN groupadd -r app && useradd -r -g app app
 
 # create directory for the app user
-RUN mkdir -p /home/app
+RUN mkdir -p /home/app \
+    && touch /home/app/access.log /home/app/error.log /home/app/gunicorn.log \
+    && chown -R app:app /home/app
 RUN mkdir /munkirepo
 RUN mkdir /munkitools
 
@@ -83,7 +92,25 @@ WORKDIR $APP_HOME
 COPY . $APP_HOME
 
 # install dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends nginx fuse3 libfuse3-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx \
+    fuse3 \
+    libfuse3-dev \
+    netcat-openbsd \
+    p7zip-full \
+    libmagic1t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# nginx is started as non-root (USER app). Default config tries to write pid to /run,
+# which is not writable. Move pid to /tmp and set the configured user to app.
+RUN sed -i 's#^user .*;#user app;#' /etc/nginx/nginx.conf \
+        && if grep -q '^pid\s\+/run/nginx.pid;' /etc/nginx/nginx.conf; then \
+                 sed -i 's#^pid\s\+/run/nginx.pid;#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf; \
+             elif ! grep -q '^pid\s\+' /etc/nginx/nginx.conf; then \
+                 sed -i '1ipid /tmp/nginx.pid;' /etc/nginx/nginx.conf; \
+             else \
+                 sed -i 's#^pid\s\+.*;#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf; \
+             fi
 COPY --from=builder /usr/src/app/wheels /wheels
 RUN pip install --upgrade pip
 RUN pip install --no-cache /wheels/*
@@ -102,6 +129,11 @@ RUN python manage.py collectstatic --noinput
 RUN chown -R app:app $APP_HOME
 RUN chown -R app:app /munkirepo
 RUN chown -R app:app /munkitools
+
+# nginx needs writable runtime directories; create and chown them for non-root.
+RUN mkdir -p /var/lib/nginx/body /var/cache/nginx /var/run /var/log/nginx \
+    && touch /var/log/nginx/access.log /var/log/nginx/error.log \
+    && chown -R app:app /var/lib/nginx /var/cache/nginx /var/run /var/log/nginx
 
 # change to the app user
 USER app

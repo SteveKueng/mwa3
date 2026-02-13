@@ -316,33 +316,100 @@ def diskImageIsMounted(dmgpath):
 
 
 def mountdmg(dmgpath, mountpoint=None):
-    """Extracts a DMG file on Linux using 7z instead of mounting."""
+    """Extracts a DMG file on Linux using 7z instead of mounting.
+
+    Many DMGs contain an embedded HFS/APFS image. In those cases, a first
+    extraction may produce a secondary image file (e.g. *.hfs, *.img) that
+    itself needs extraction. This helper attempts a second-stage extraction
+    when no supported installer items are found.
+    """
+
+    def _has_supported_installer_item(root: str) -> bool:
+        for dirpath, dirnames, filenames in os.walk(root):
+            # detect bundle-style items (.app, .pkg, .mpkg) as directories
+            for d in dirnames:
+                lower = d.lower()
+                if lower.endswith('.app') or lower.endswith('.pkg') or lower.endswith('.mpkg'):
+                    return True
+            for f in filenames:
+                lower = f.lower()
+                if lower.endswith('.pkg') or lower.endswith('.mpkg'):
+                    return True
+        return False
+
+    def _extract_with_7z(src: str, dest: str) -> bool:
+        extract_cmd = ["7z", "x", src, f"-o{dest}", "-y"]
+        proc = subprocess.run(extract_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode('utf-8', errors='replace')
+            print(f"Error extracting {src}: {stderr}", file=sys.stderr)
+            return False
+        return True
+
     if not mountpoint:
-        mountpoint = os.path.join(tempfile.gettempdir(), "mnt_" + os.path.splitext(os.path.basename(dmgpath))[0])
-    
-    # create mountpoint if it doesn't exist
+        base = os.path.splitext(os.path.basename(dmgpath))[0]
+        mountpoint = os.path.join(tempfile.gettempdir(), f"mnt_{base}")
+
     os.makedirs(mountpoint, exist_ok=True)
 
-    # check if 7z is installed
     if not shutil.which("7z"):
         print("Error: `7z` is not installed. Install it with `apt install p7zip-full`.", file=sys.stderr)
         return ""
 
-    # extract the DMG file
-    extract_cmd = ["7z", "x", dmgpath, f"-o{mountpoint}", "-y"]
-    proc = subprocess.run(extract_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    if proc.returncode != 0:
-        print(f"Error extracting {dmgpath}: {proc.stderr.decode('utf-8')}", file=sys.stderr)
+    # Stage 1: extract the DMG itself
+    if not _extract_with_7z(dmgpath, mountpoint):
         return ""
 
-    print(f"DMG extracted to {mountpoint}")
+    if _has_supported_installer_item(mountpoint):
+        print(f"DMG extracted to {mountpoint}")
+        return mountpoint
+
+    # Stage 2: attempt to extract an embedded image if present
+    # Common outputs include *.hfs, *.img, or extensionless partition files.
+    candidate_exts = {'.hfs', '.img', '.iso', '.dmg', '.udif', '.sparseimage', '.apfs'}
+    candidates: list[str] = []
+    try:
+        for name in os.listdir(mountpoint):
+            path = os.path.join(mountpoint, name)
+            if not os.path.isfile(path):
+                continue
+            _, ext = os.path.splitext(name)
+            if ext.lower() in candidate_exts:
+                candidates.append(path)
+    except OSError:
+        candidates = []
+
+    # If we have exactly one file and nothing else obvious, try extracting it.
+    if not candidates:
+        try:
+            files = [os.path.join(mountpoint, n) for n in os.listdir(mountpoint)]
+            files = [p for p in files if os.path.isfile(p)]
+            if len(files) == 1:
+                candidates = files
+        except OSError:
+            candidates = []
+
+    for candidate in candidates:
+        inner_dir = os.path.join(mountpoint, "_inner")
+        os.makedirs(inner_dir, exist_ok=True)
+        if _extract_with_7z(candidate, inner_dir) and _has_supported_installer_item(inner_dir):
+            print(f"DMG extracted to {inner_dir}")
+            return inner_dir
+
+    # No supported items found
     return mountpoint
 
 
 def unmountdmg(dmgpath, mountpoint):
     """Cleans up extracted DMG files using 7z."""
-    
+
+    # mountpoint may be returned as a string path; in older call-sites it could
+    # also be a list/tuple of mount points.
+    if isinstance(mountpoint, (list, tuple)):
+        for mp in mountpoint:
+            unmountdmg(dmgpath, mp)
+        return
+
     if not os.path.exists(mountpoint):
         print(f"Warning: {mountpoint} does not exist.", file=sys.stderr)
         return

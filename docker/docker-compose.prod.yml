@@ -1,37 +1,34 @@
-version: '3.8'
-
 services:
   munkiwebadmin:
     container_name: munkiwebadmin
-    image: stevekueng/mwa3
+    image: mwa3:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.prod
+    platform: ${DOCKER_PLATFORM:-linux/amd64}
     restart: unless-stopped
-    environment:
-      - DB=postgres
-      - DB_HOST=db
-      - DB_NAME=munkiwebadmin_db
-      - DB_USER=munkiwebadmin_user
-      - DB_PASS=munkiwebadmin_pass
-      - DB_PORT=5432
-      - APPNAME=MunkiWebAdmin
-      - ALLOWED_HOSTS=munkiwebadmin.example.com
-      - CSRF_TRUSTED_ORIGINS=https://munkiwebadmin.example.com
+    ports:
+      - "${MWA_PORT:-8080}:80"
+    env_file:
+      - ../munkiwebadmin/.env
     depends_on:
       - db
     links:
       - db
     volumes:
-      - <munki_repo/path>:/munkirepo
+      - munki_repo:/munkirepo
   db:
     container_name: munkidb
     image: postgres:15
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=munkiwebadmin_user
-      - POSTGRES_PASSWORD=munkiwebadmin_pass
-      - POSTGRES_DB=munkiwebadmin_db
+    env_file:
+      - ../munkiwebadmin/.env
 
 volumes:
   postgres_data:
+
+  # Persistent Munki repository data inside Docker
   munki_repo:
+

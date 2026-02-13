@@ -162,6 +162,38 @@ class PackageUploadTests(APITestCase):
         finally:
             os.unlink(test_file.name)
 
+    @patch('api.views.MunkiRepo')
+    @patch('api.views.makepkginfo')
+    def test_upload_dmg_fallback_when_pkginfo_fails(self, mock_makepkginfo, mock_repo):
+        """DMG uploads should still succeed when pkginfo inspection fails."""
+        self.client.force_authenticate(user=self.user)
+
+        mock_makepkginfo.side_effect = Exception("Could not find a supported installer item")
+
+        # Repo behaviors used by the view
+        mock_repo.list.return_value = []
+        mock_repo.find_matching_pkginfo.return_value = None
+        mock_repo.writedata.return_value = True
+        mock_repo.write.return_value = True
+
+        test_file = tempfile.NamedTemporaryFile(suffix='.dmg', delete=False)
+        test_file.write(b"fake dmg data")
+        test_file.close()
+
+        try:
+            with open(test_file.name, 'rb') as f:
+                response = self.client.post(
+                    '/api/pkgs/public/claude/Claude.dmg',
+                    {'file': f},
+                    format='multipart'
+                )
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertIn('pkginfo_path', response.data)
+            self.assertIn('pkg_path', response.data)
+        finally:
+            os.unlink(test_file.name)
+
 
 class ThrottlingTests(APITestCase):
     """Tests for API rate limiting"""
