@@ -4,6 +4,21 @@ set -eu
 
 NAME="MunkiWebAdmin"
 
+# Ensure relative paths (manage.py, static, etc.) resolve even if the startup
+# working directory isn't /home/site/wwwroot.
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$SCRIPT_DIR"
+
+if [ "${MWA_STARTUP_DEBUG:-0}" = "1" ]; then
+	echo "[mwa] Startup debug enabled"
+	echo "[mwa] PWD: $(pwd)"
+	echo "[mwa] UID:GID: $(id -u):$(id -g)"
+	echo "[mwa] Python: $(command -v python || true)"
+	echo "[mwa] Gunicorn: $(command -v gunicorn || true)"
+	echo "[mwa] Listing /home/site/wwwroot (if present):"
+	ls -la /home/site/wwwroot 2>/dev/null || true
+fi
+
 # Azure App Service (zip deploy / Oryx) does not guarantee root access or
 # availability of apt-get at runtime. Keep startup logic pure-Python.
 
@@ -18,4 +33,4 @@ PORT_TO_BIND="${PORT:-${WEBSITES_PORT:-8000}}"
 
 echo "Starting ${NAME} on 0.0.0.0:${PORT_TO_BIND}"
 
-exec gunicorn --bind "0.0.0.0:${PORT_TO_BIND}" --timeout 600 --workers 4 munkiwebadmin.wsgi
+exec python -m gunicorn --bind "0.0.0.0:${PORT_TO_BIND}" --timeout 600 --workers 4 munkiwebadmin.wsgi

@@ -114,6 +114,37 @@ Set the Web App Startup Command to:
 ./entrypoint.azure.sh
 ```
 
+If the app fails at startup with an error like:
+
+```
+sh: 0: cannot open /home/site/wwwroot/entrypoint.azure.sh: No such file
+```
+
+it means the deployed package did not place `entrypoint.azure.sh` at the root of `/home/site/wwwroot`.
+
+Quick checks to find where it landed (no app start required):
+
+- Open **Kudu / Advanced Tools**: `https://<your-app-name>.scm.azurewebsites.net/`
+- Go to **Debug console → Bash**
+
+Then run:
+
+```bash
+ls -la /home/site/wwwroot
+find /home/site/wwwroot -maxdepth 4 -name 'entrypoint.azure.sh' -print
+```
+
+If you cannot access the Kudu UI, you can also use the Kudu VFS endpoint to list files (requires deployment credentials):
+
+`https://<your-app-name>.scm.azurewebsites.net/api/vfs/site/wwwroot/`
+
+If the file is inside a nested folder (common when a zip contains `site/wwwroot/` inside it), either:
+
+- Fix the packaging so the zip root is your repo root (recommended), or
+- Update the Startup Command to point at the nested path that `find` prints.
+
+To get more startup logs once the script is being executed, set `MWA_STARTUP_DEBUG=1` in App Settings.
+
 Azure provides the port via `PORT` (or `WEBSITES_PORT`); entrypoint.azure.sh binds to it.
 
 ### 3) Decide whether to include AzureRepo plugin
