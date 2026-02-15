@@ -79,4 +79,3 @@ jobs:
           app-name: 'munkiwebadmin'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_52B6EA32FBB6413DBA9A9E4745A5955A }}
-
