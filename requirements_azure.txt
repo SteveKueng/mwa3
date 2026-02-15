@@ -1,5 +1,5 @@
 django==6.0.2
-psycopg2-binary==2.9.9
+psycopg[binary]==3.2.5
 gunicorn==25.0.3
 django-cors-headers==4.7.0
 requests==2.32.5
