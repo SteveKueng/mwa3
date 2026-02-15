@@ -725,7 +725,8 @@ def getPackageMetaData(pkgitem):
     # first query /usr/sbin/installer for restartAction
     installerinfo = getPkgRestartInfo(pkgitem)
     # now look for receipt and product version info
-    receiptinfo = getReceiptInfo(pkgitem)
+    receiptinfo = getReceiptInfo(pkgitem) or {"receipts": [], "product_version": None}
+    receipts = receiptinfo.get('receipts', []) or []
 
     name = os.path.split(pkgitem)[1]
     shortname = os.path.splitext(name)[0]
@@ -735,7 +736,7 @@ def getPackageMetaData(pkgitem):
 
     highestpkgversion = '0.0'
     installedsize = 0
-    for infoitem in receiptinfo['receipts']:
+    for infoitem in receipts:
         if (MunkiLooseVersion(infoitem['version']) >
                 MunkiLooseVersion(highestpkgversion)):
             highestpkgversion = infoitem['version']
@@ -745,7 +746,7 @@ def getPackageMetaData(pkgitem):
 
     if metaversion == '0.0.0.0.0':
         metaversion = highestpkgversion
-    elif len(receiptinfo['receipts']) == 1:
+    elif len(receipts) == 1:
         # there is only one package in this item
         metaversion = highestpkgversion
     elif highestpkgversion.startswith(metaversion):
@@ -766,7 +767,7 @@ def getPackageMetaData(pkgitem):
     elif installedsize:
         cataloginfo['installed_size'] = installedsize
 
-    cataloginfo['receipts'] = receiptinfo['receipts']
+    cataloginfo['receipts'] = receipts
 
     if os.path.isfile(pkgitem) and not pkgitem.endswith('.dist'):
         # flat packages require 10.5.0+
@@ -988,18 +989,29 @@ def getPkgRestartInfo(filename):
 
 def getReceiptInfo(pkgname):
     """Get receipt info (a dict) from a package"""
-    info = []
-    if hasValidPackageExt(pkgname):
-        if os.path.isfile(pkgname):       # new flat package
-            info = getFlatPackageInfo(pkgname)
+    # Always return a dict with at least a 'receipts' key so callers can be
+    # defensive without needing to special-case failures.
+    info = {"receipts": [], "product_version": None}
 
-        if os.path.isdir(pkgname):        # bundle-style package?
-            info = getBundlePackageInfo(pkgname)
+    if hasValidPackageExt(pkgname):
+        if os.path.isfile(pkgname):  # flat package (XAR)
+            flat_info = getFlatPackageInfo(pkgname)
+            if isinstance(flat_info, dict):
+                info.update(flat_info)
+            elif isinstance(flat_info, list):
+                # tolerate older return shapes
+                info["receipts"] = flat_info
+
+        elif os.path.isdir(pkgname):  # bundle-style package
+            bundle_info = getBundlePackageInfo(pkgname)
+            if isinstance(bundle_info, dict):
+                info.update(bundle_info)
 
     elif pkgname.endswith('.dist'):
-        receiptarray = parsePkgRefs(pkgname)
-        info = {"receipts": receiptarray}
+        info["receipts"] = parsePkgRefs(pkgname)
 
+    if info.get("receipts") is None:
+        info["receipts"] = []
     return info
 
 
@@ -1112,18 +1124,26 @@ def getFlatPackageInfo(pkgpath):
     pkgtmp = tempfile.mkdtemp()
     cwd = os.getcwd()
 
-    # Prüfen, ob `7z` installiert ist
+    # Check for 7z. Some deployments (notably Azure App Service zip deploy)
+    # don't provide it and you typically can't apt-get at runtime.
+    # Return a minimal shape so callers can proceed.
     if not shutil.which("7z"):
-        print("Error: `7z` is not installed. Install it with `apt install p7zip-full`.", file=sys.stderr)
-        return {}
+        print(
+            "Warning: `7z` is not installed; skipping receipt extraction for flat packages.",
+            file=sys.stderr,
+        )
+        return {"receipts": [], "product_version": None}
 
     try:
         # Entpacke das .pkg mit `7z`
         cmd_extract = ["7z", "x", abspkgpath, f"-o{pkgtmp}"]
         proc = subprocess.run(cmd_extract, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
-            print(f"Error extracting {pkgpath}: {proc.stderr.decode('utf-8')}", file=sys.stderr)
-            return {}
+            print(
+                f"Error extracting {pkgpath}: {proc.stderr.decode('utf-8', errors='replace')}",
+                file=sys.stderr,
+            )
+            return {"receipts": [], "product_version": None}
 
         # Suche nach `PackageInfo`-Dateien
         for root, _, files in os.walk(pkgtmp):
@@ -1157,7 +1177,7 @@ def getFlatPackageInfo(pkgpath):
 
     except Exception as e:
         print(f"Error processing {pkgpath}: {e}", file=sys.stderr)
-        return {}
+        return {"receipts": [], "product_version": None}
 
     finally:
         os.chdir(cwd)  # Zurück zum Originalverzeichnis wechseln
