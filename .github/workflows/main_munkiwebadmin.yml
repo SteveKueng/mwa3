@@ -44,7 +44,10 @@ jobs:
       
 
       - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+        run: |
+          test -f entrypoint.azure.sh
+          zip release.zip ./* -r
+          unzip -l release.zip | grep -F "entrypoint.azure.sh"
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
@@ -79,3 +82,4 @@ jobs:
           app-name: 'munkiwebadmin'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_52B6EA32FBB6413DBA9A9E4745A5955A }}
+          package: release.zip
