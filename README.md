@@ -1,362 +1,247 @@
 # MWA3 - MunkiWebAdmin 3
 
-## Introduction
-MunkiWebAdmin 3 (MWA3) is a modern, Django-based web administration tool for [Munki](https://github.com/munki/munki). It provides a comprehensive interface for managing Munki repositories, including package information, manifests, catalogs, and icons.
+MunkiWebAdmin 3 (MWA3) is a Django-based web administration tool for Munki.
 
-<img width="1505" alt="ScreenShot1" src="https://github.com/SteveKueng/munkiwebadmin/assets/5426904/f5773913-3b24-4cef-bc1c-f5e78c1f98df">
+## Deployment Guides
 
-## Features
+MWA3 supports two common deployment modes:
 
-- **Package Management**: Upload, edit, and manage package information (pkgsinfo)
-- **Manifest Management**: Create and manage client manifests
-- **Catalog Management**: View and manage Munki catalogs
-- **Icon Management**: Upload and manage application icons
-- **Vulnerability Scanning**: Integrated CVE/NIST vulnerability scanning for packages
-- **REST API**: Full REST API for programmatic access
-- **Authentication**: Support for Azure AD/ADFS and LDAP authentication
-- **Multi-Storage**: Support for local filesystem, Azure Blob Storage
-- **Docker Support**: Production-ready Docker containers
-
-## Quick Start
-
-### Docker (Recommended)
-
-1. Clone the repository:
-```bash
-git clone https://github.com/SteveKueng/munkiwebadmin.git
-cd munkiwebadmin
-```
-
-2. Create a `.env` file with your configuration:
-```bash
-SECRET_KEY=your-secure-secret-key-here
-DB=postgres
-DB_NAME=munkiwebadmin
-DB_USER=munkiwebadmin_user
-DB_PASS=your-secure-password
-DB_HOST=db
-DB_PORT=5432
-ALLOWED_HOSTS=localhost 127.0.0.1
-```
-
-3. Start with Docker Compose:
-```bash
-cd docker
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-4. Access at `http://localhost:80`
-
-### Manual Installation
-
-#### Requirements
-- Python 3.14+
-- PostgreSQL, MySQL, or SQLite
-- libmagic (for file type validation)
-
-#### Installation Steps
-
-1. Install system dependencies (Ubuntu/Debian):
-```bash
-apt-get install python3.14 python3-pip libmagic1 postgresql-client
-```
-
-2. Clone and install Python dependencies:
-```bash
-git clone https://github.com/SteveKueng/munkiwebadmin.git
-cd munkiwebadmin
-pip install -r requirements.txt
-```
-
-3. Configure environment variables (see Configuration section)
-
-4. Run migrations:
-```bash
-python manage.py migrate
-```
-
-5. Create superuser:
-```bash
-python manage.py createsuperuser
-```
-
-6. Collect static files:
-```bash
-python manage.py collectstatic
-```
-
-7. Start the development server:
-```bash
-python manage.py runserver
-```
-
-## Configuration
-
-### Required Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SECRET_KEY` | Django secret key (MUST be set in production) | N/A |
-| `ALLOWED_HOSTS` | Space-separated list of allowed hosts | `localhost 127.0.0.1` |
-| `MUNKI_REPO_URL` | Munki repository URL | `file:///munkirepo` |
-
-### Database Configuration
-
-Choose your database backend:
-
-**PostgreSQL (Recommended):**
-```bash
-DB=postgres
-DB_NAME=munkiwebadmin
-DB_USER=munkiwebadmin_user
-DB_PASS=your-password
-DB_HOST=localhost
-DB_PORT=5432
-```
-
-**MySQL:**
-```bash
-DB=mysql
-DB_NAME=munkiwebadmin
-DB_USER=munkiwebadmin_user
-DB_PASS=your-password
-DB_HOST=localhost
-DB_PORT=3306
-```
-
-**SQLite (Development only):**
-```bash
-# No additional configuration needed
-```
-
-### Security Settings
-
-```bash
-# HTTPS/SSL
-SECURE_SSL_REDIRECT=True
-CSRF_COOKIE_SECURE=True
-SECURE_HSTS_SECONDS=31536000
-
-# CSRF Protection
-CSRF_TRUSTED_ORIGINS=https://yourdomain.com
-
-# Rate Limiting
-THROTTLE_ANON=100/hour
-THROTTLE_USER=1000/hour
-THROTTLE_UPLOADS=10/hour
-```
-
-### Authentication
-
-**Azure AD/ADFS:**
-```bash
-CLIENT_ID=your-azure-client-id
-CLIENT_SECRET=your-azure-client-secret
-TENANT_ID=your-azure-tenant-id
-ENTRA_ONLY=True
-```
-
-**LDAP:**
-Set `USE_LDAP=True` in settings.py and configure LDAP settings.
-
-### Optional Settings
-
-```bash
-# Application
-APPNAME=MunkiWebAdmin
-DEBUG=False
-LANGUAGE_CODE=en-us
-TIME_ZONE=UTC
-
-# Package Display
-ENABLE_REPO_VIEW=True
-CATALOGS_TO_DISPLAY=production testing development
-SHOW_ICONS=True
-
-# Vulnerability Scanning
-NIST_API_KEY=your-nist-api-key
-```
-
-## REST API
-
-MWA3 provides a full REST API for programmatic access:
-
-- **Authentication**: Basic Auth, Session Auth, or Azure AD Token
-- **Endpoints**:
-  - `/api/catalogs/` - Catalog management
-  - `/api/manifests/` - Manifest management
-  - `/api/pkgsinfo/` - Package info management
-  - `/api/pkgs/` - Package uploads
-  - `/api/icons/` - Icon management
-
-### API Example
-
-```bash
-# List all catalogs
-curl -u username:password https://yourserver/api/catalogs/
-
-# Upload a package
-curl -X POST -F "file=@package.pkg" \
-  -u username:password \
-  https://yourserver/api/pkgs/packages/apps/
-```
-
-## Security Best Practices
-
-### Production Deployment Checklist
-
-- [ ] Set unique `SECRET_KEY` (never use default!)
-- [ ] Set `DEBUG=False`
-- [ ] Configure proper `ALLOWED_HOSTS`
-- [ ] Use HTTPS/SSL (`SECURE_SSL_REDIRECT=True`)
-- [ ] Enable CSRF protection (`CSRF_COOKIE_SECURE=True`)
-- [ ] Configure rate limiting
-- [ ] Use strong database passwords
-- [ ] Run container as non-root user (already configured)
-- [ ] Keep dependencies updated (enable Dependabot)
-- [ ] Regular security audits
-
-### Known Security Considerations
-
-- File uploads are validated using magic bytes (not just extensions)
-- Access tokens are never logged
-- CSRF protection is enabled for all state-changing operations
-- Rate limiting prevents abuse
-- Security headers (HSTS, X-Frame-Options) are configured
-
-## Development
-
-### Running Tests
-
-```bash
-python manage.py test
-```
-
-### Code Style
-
-```bash
-# Install development dependencies
-pip install flake8 black
-
-# Format code
-black .
-
-# Lint
-flake8 .
-```
-
-### Project Structure
-
-```
-mwa3/
-├── api/              # REST API endpoints
-├── catalogs/         # Catalog management
-├── manifests/        # Manifest management
-├── pkgsinfo/         # Package info management
-├── icons/            # Icon management
-├── vulnerabilities/  # CVE scanning
-├── munkiwebadmin/    # Main Django project
-└── docker/           # Docker configuration
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**1. Database Connection Failed**
-- Check database credentials in environment variables
-- Ensure database service is running
-- Verify network connectivity
-
-**2. Static Files Not Loading**
-- Run `python manage.py collectstatic`
-- Check `STATIC_ROOT` and `STATIC_URL` settings
-
-**3. Unauthorized API Access**
-- Verify authentication credentials
-- Check API permissions in Django admin
-
-**4. File Upload Fails**
-- Check `MUNKI_REPO_URL` configuration
-- Verify write permissions on repository directory
-- Ensure file is valid PKG or DMG format
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-## Support
-
-- **Documentation**: Check the [wiki](https://github.com/SteveKueng/munkiwebadmin/wiki)
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/SteveKueng/munkiwebadmin/issues)
-- **Discussions**: Join discussions in the [Munki community](https://www.munki.org/munki/)
-
-## License
-
-See LICENSE file for details.
-
-## Credits
-
-MunkiWebAdmin is built on:
-- [Django](https://www.djangoproject.com/)
-- [Django REST Framework](https://www.django-rest-framework.org/)
-- [Munki](https://github.com/munki/munki)
+- **Docker / Docker Compose**: runs the full stack locally or on a server using the provided production image.
+- **Azure App Service (Zip Deploy / Oryx)**: deploys the repo as a zip artifact; the Dockerfile is not used.
 
 ---
 
-**Note**: This is version 3 of MunkiWebAdmin, a complete rewrite with modern architecture and security best practices.
+## Guide 1: Docker (Local/Server)
 
-## Environment Variables (Review)
+### Prerequisites
 
-This project is configured primarily via environment variables. Values are read from your shell environment and/or an `.env` file (Docker Compose uses `env_file`). Lists like `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are **space-separated**.
+- Docker + Docker Compose v2
 
-### Docker Compose Variables
+### 1) Configure environment
 
-These control how Compose runs locally and are optional:
+Docker Compose loads environment variables from munkiwebadmin/.env (see docker/docker-compose.prod.yml).
 
-- `MWA_PORT` (default `8080`): Host port published to container port 80.
-- `DOCKER_PLATFORM` (default `linux/amd64`): Useful on Apple Silicon when an image or dependency is amd64-only.
+### 2) Build + start
 
-### Django / App Variables
+From the repo root:
 
-Minimum recommended variables:
+```bash
+docker compose -f docker/docker-compose.prod.yml up -d --build
+```
 
-- `SECRET_KEY`: Required for production (set a unique value).
-- `DEBUG` (`True`/`False`): Defaults to `False`.
-- `APPNAME`: Visible app name.
+App will be available on `http://localhost:8080` by default.
 
-Host/CSRF (important when running behind a real hostname):
+- Override port with `MWA_PORT`, for example: `MWA_PORT=8080`
+- On Apple Silicon, you may need `DOCKER_PLATFORM=linux/amd64`
 
-- `ALLOWED_HOSTS`: Space-separated, e.g. `munkiwebadmin.example.com`.
-- `CSRF_TRUSTED_ORIGINS`: Space-separated origins (scheme + host), e.g. `https://munkiwebadmin.example.com`.
-- `SECURE_SSL_REDIRECT` (`True`/`False`): Enable if you are serving HTTPS (often behind a reverse proxy).
-- `CSRF_COOKIE_SECURE` (`True`/`False`): Optional override. If unset, it defaults to the value of `SECURE_SSL_REDIRECT`.
-- `CSRF_COOKIE_HTTPONLY` (`True`/`False`): Defaults to `True`. The UI reads the CSRF token from a `<meta>` tag, so this can stay `True`.
+### 3) Create an admin user
 
-### Database Variables
+```bash
+docker compose -f docker/docker-compose.prod.yml exec munkiwebadmin python manage.py createsuperuser
+```
 
-For Postgres (Docker Compose example):
+### Optional: disable AzureRepo plugin in the image
 
-- `DB=postgres`
-- `DB_HOST=db`
-- `DB_PORT=5432`
-- `DB_NAME=munkiwebadmin`
-- `DB_USER=munkiwebadmin_user`
-- `DB_PASS=...`
+If you are not using Azure Blob storage repos, you can build a smaller image:
 
-### Munki Repository Variables
+```bash
+INSTALL_AZUREREPO_PLUGIN=false docker compose -f docker/docker-compose.prod.yml build munkiwebadmin
+```
 
-- `MUNKI_REPO_URL`: Defaults to `file:///munkirepo`.
-- `MUNKI_REPO_PLUGIN`: Defaults to `FileRepo`.
+---
 
-Docker build option:
-- `INSTALL_AZUREREPO_PLUGIN`: Build-time flag (default `true`) that controls whether the Docker image downloads/includes the `AzureRepo.py` plugin. Set to `false` to build a smaller/faster image when you don’t use Azure Blob repos.
-  - Example: `INSTALL_AZUREREPO_PLUGIN=false docker compose -f docker/docker-compose.prod.yml build munkiwebadmin`
+## Guide 2: Azure App Service (Zip Deploy / Oryx)
 
-If you use the Azure Blob plugin (`AzureRepo`), the plugin expects additional Azure-related environment variables (for example a SAS token). The exact variable names and format are defined by the MunkiAzurePlugin implementation.
+This repo includes a GitHub Actions workflow that produces a zip artifact and deploys it to Azure App Service.
+
+### Important notes
+
+- Zip Deploy uses Oryx to build; the Dockerfile is **not** used.
+- Startup logic is handled by entrypoint.azure.sh.
+- Do **not** rely on `apt-get` at runtime in Azure App Service.
+
+### 1) Configure Azure Web App settings
+
+In Azure Portal → Web App → Configuration → Application settings, set the same environment variables you use in Docker (database, Munki repo, etc.).
+
+### 2) Set the Startup Command
+
+Set the Web App Startup Command to:
+
+```bash
+./entrypoint.azure.sh
+```
+
+Azure provides the port via `PORT` (or `WEBSITES_PORT`); entrypoint.azure.sh binds to it.
+
+### 3) Decide whether to include AzureRepo plugin
+
+The workflow can optionally include the `AzureRepo.py` Munki plugin in the deployed artifact.
+
+In GitHub repo Variables (Settings → Secrets and variables → Actions → Variables), set:
+
+- `INSTALL_AZUREREPO_PLUGIN=false` to skip it
+
+If unset (default), the workflow includes the plugin.
+
+---
+
+## Guide 3: macOS (Run Natively)
+
+This is an important variant because Munki’s Python client libraries are readily available on macOS when you install Munki.
+
+### Prerequisites
+
+- macOS
+- Python 3.11+ (3.14 is fine too)
+- Munki installed (so `munkilib` exists under `/usr/local/munki`)
+	- After installing Munki, you should have `/usr/local/munki/munkilib/`
+
+Optional (only if you want stronger MIME detection for uploads):
+
+- Homebrew `libmagic` (`brew install libmagic`)
+
+### Run steps
+
+From the repo root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then start the dev server with the provided script (sets sane defaults for macOS):
+
+```bash
+./devScripts/startDevServer.sh
+```
+
+Defaults used by the script:
+
+- `MUNKITOOLS_DIR=/usr/local/munki`
+- `MUNKI_REPO_URL=file:///Users/Shared/munkirepo`
+- SQLite database (unless you set Postgres/MySQL env vars)
+
+To use Postgres locally on macOS, set `DB=postgres` + the `DB_*` variables before running the script.
+
+---
+
+## Configuration
+
+MWA3 is configured primarily via environment variables. Values are read from the process environment and/or an `.env` file.
+
+Lists like `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are **space-separated**.
+
+### Required variables (minimum)
+
+- `SECRET_KEY`: Django secret key (required for production)
+- `ALLOWED_HOSTS`: Space-separated hostnames
+- Database variables (see below)
+- Munki repo variables (see below)
+
+### Database (Postgres example)
+
+```bash
+DB=postgres
+DB_NAME=munkiwebadmin_db
+DB_USER=munkiwebadmin_user
+DB_PASS=change-me
+DB_HOST=db
+DB_PORT=5432
+```
+
+### Munki repository
+
+- `MUNKI_REPO_URL` (default `file:///munkirepo`)
+- `MUNKI_REPO_PLUGIN` (default `FileRepo`)
+- `MUNKITOOLS_DIR` (default `/munkitools`, falls back to `./munkitools` if missing)
+
+If you use the Azure Blob plugin (`AzureRepo`), the plugin expects additional Azure-related environment variables (for example a SAS token). The exact variable names/format are defined by the MunkiAzurePlugin implementation.
+
+---
+
+## Final-State Examples
+
+### Example A: Docker environment file
+
+Example munkiwebadmin/.env (local Postgres via Compose + local file repo):
+
+```bash
+SECRET_KEY=change-me
+DEBUG=False
+ALLOWED_HOSTS=localhost 127.0.0.1
+
+DB=postgres
+DB_NAME=munkiwebadmin_db
+DB_USER=munkiwebadmin_user
+DB_PASS=munkiwebadmin_pass
+DB_HOST=db
+DB_PORT=5432
+
+MUNKI_REPO_URL=file:///munkirepo
+MUNKI_REPO_PLUGIN=FileRepo
+```
+
+### Example B: Azure configuration
+
+1) Azure Web App Application settings (example using Postgres + AzureRepo):
+
+```bash
+SECRET_KEY=change-me
+DEBUG=False
+ALLOWED_HOSTS=munkiwebadmin.example.com
+CSRF_TRUSTED_ORIGINS=https://munkiwebadmin.example.com
+
+DB=postgres
+DB_NAME=munkiwebadmin_db
+DB_USER=munkiwebadmin_user
+DB_PASS=***
+DB_HOST=***
+DB_PORT=5432
+
+MUNKI_REPO_URL=AzureRepo://your-container
+MUNKI_REPO_PLUGIN=AzureRepo
+SAS_TOKEN=***
+AZURE_STORAGE_BLOB_ENDPOINT=***
+```
+
+2) GitHub Actions variable:
+
+```bash
+INSTALL_AZUREREPO_PLUGIN=false
+```
+
+3) Workflow snippet (from .github/workflows/main_munkiwebadmin.yml):
+
+```yaml
+- name: Install AzureRepo plugin
+	# Default: enabled. Set repo variable INSTALL_AZUREREPO_PLUGIN=false to skip.
+	if: ${{ vars.INSTALL_AZUREREPO_PLUGIN != 'false' }}
+	run: |
+		curl -Lk -o /tmp/MunkiAzurePlugin.zip "$(curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | awk '/zipball_url/ { print $2 }' | sed 's/[\",]//g')"
+		unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin
+		cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py munkitools/munkilib/munkirepo/
+```
+
+---
+
+## REST API
+
+Endpoints:
+
+- `/api/catalogs/`
+- `/api/manifests/`
+- `/api/pkgsinfo/`
+- `/api/pkgs/`
+- `/api/icons/`
+
+---
+
+## Troubleshooting
+
+### Common issues
+
+- **Unauthorized / redirects to login**: most UI and API endpoints require authentication.
+- **Database connection failed**: verify DB env vars and connectivity.
+- **Static files not loading**: ensure `collectstatic` ran (Docker image runs it at build time; Azure runs it at startup).

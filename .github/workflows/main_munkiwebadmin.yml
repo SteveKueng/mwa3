@@ -28,7 +28,7 @@ jobs:
           source venv/bin/activate
 
       - name: Install dependencies
-        run: mv requirements_azure.txt requirements.txt
+        run: cp requirements_azure.txt requirements.txt
 
       - name: create munkirepo directory
         run: mkdir munkirepo
@@ -37,6 +37,8 @@ jobs:
         run: curl -Lk -o /tmp/munkitools.zip `curl --silent https://api.github.com/repos/munki/munki/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` && unzip /tmp/munkitools.zip -d /tmp/munkitools && rm -rf /tmp/munkitools.zip && cp -R /tmp/munkitools/munki-munki-*/code/client munkitools && rm -rf /tmp/munkitools
 
       - name: Install AzureRepo plugin
+        # Default: enabled. Set repo variable INSTALL_AZUREREPO_PLUGIN=false to skip.
+        if: ${{ vars.INSTALL_AZUREREPO_PLUGIN != 'false' }}
         run: curl -Lk -o /tmp/MunkiAzurePlugin.zip `curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` && unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin && rm -rf /tmp/MunkiAzurePlugin.zip && cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py munkitools/munkilib/munkirepo/ && rm -rf /tmp/MunkiAzurePlugin
 
       
