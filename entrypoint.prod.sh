@@ -25,6 +25,13 @@ done
 echo "PostgreSQL started"
 
 # migrate database
+#
+# We run migrations in two phases:
+# 1) Run normal migrations first (creates built-in tables like auth_user)
+# 2) Then run syncdb for local apps that don't ship migrations
+#
+# This avoids failures when syncdb-created tables have FKs to auth tables.
+python manage.py migrate --noinput
 python manage.py migrate --noinput --run-syncdb
 
 echo "Starting $NAME as $(whoami)"

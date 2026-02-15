@@ -355,4 +355,8 @@ For Postgres (Docker Compose example):
 - `MUNKI_REPO_URL`: Defaults to `file:///munkirepo`.
 - `MUNKI_REPO_PLUGIN`: Defaults to `FileRepo`.
 
+Docker build option:
+- `INSTALL_AZUREREPO_PLUGIN`: Build-time flag (default `true`) that controls whether the Docker image downloads/includes the `AzureRepo.py` plugin. Set to `false` to build a smaller/faster image when you don’t use Azure Blob repos.
+  - Example: `INSTALL_AZUREREPO_PLUGIN=false docker compose -f docker/docker-compose.prod.yml build munkiwebadmin`
+
 If you use the Azure Blob plugin (`AzureRepo`), the plugin expects additional Azure-related environment variables (for example a SAS token). The exact variable names and format are defined by the MunkiAzurePlugin implementation.

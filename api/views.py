@@ -91,6 +91,16 @@ if platform.system() == "Darwin":
 else:
     from api.utils.munkiimport_linux import makepkginfo
 
+try:
+    from api.utils.icon_extract_linux import generate_icon_png_bytes
+except Exception:  # pragma: no cover
+    generate_icon_png_bytes = None
+
+
+def _env_truthy(name: str, default: str = "0") -> bool:
+    value = os.getenv(name, default)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
 
 def _guess_version_from_filename(filename: str) -> str:
     """Best-effort version extraction from a filename.
@@ -769,6 +779,7 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
         temp_file_path = None
         pkg_path_written = None
         pkginfo_path_written = None
+        icon_path_written = None
 
         try:
             # Generate unique temporary filename
@@ -913,6 +924,43 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
             # Step 2: Update pkginfo with final installer_item_location
             pkginfo['installer_item_location'] = pkg_path
 
+            # Step 2.5: Best-effort icon generation (Linux/container friendly)
+            #
+            # Munki's native icon generation uses macOS frameworks; in containers
+            # we attempt a lightweight fallback using 7z + Pillow. Never block
+            # the upload if icon extraction fails.
+            try:
+                if _env_truthy('AUTO_GENERATE_ICONS', default='1') and generate_icon_png_bytes is not None:
+                    icon_result = generate_icon_png_bytes(temp_file_path)
+                    if icon_result:
+                        # Determine desired icon name
+                        icon_name_raw = pkginfo.get('icon_name') or pkginfo.get('name') or os.path.splitext(os.path.basename(filename))[0]
+                        icon_name_raw = os.path.basename(str(icon_name_raw)).strip()
+                        icon_root, icon_ext = os.path.splitext(icon_name_raw)
+                        if icon_ext:
+                            icon_filename = icon_name_raw
+                            icon_name_for_pkginfo = icon_root
+                        else:
+                            icon_filename = f"{icon_name_raw}.png"
+                            icon_name_for_pkginfo = icon_name_raw
+
+                        # Only write if not present already
+                        try:
+                            existing_icons = MunkiRepo.list('icons')
+                        except Exception:
+                            existing_icons = []
+
+                        icon_available = icon_filename in existing_icons
+                        if not icon_available:
+                            MunkiRepo.writedata(icon_result.png_bytes, 'icons', icon_filename)
+                            icon_path_written = icon_filename
+                            icon_available = True
+
+                        if icon_available:
+                            pkginfo['icon_name'] = icon_name_for_pkginfo
+            except Exception as icon_err:
+                LOGGER.warning('Icon generation skipped/failed for %s: %s', filename, icon_err, exc_info=True)
+
             # Step 3: Write pkginfo (rollback package if this fails)
             try:
                 MunkiRepo.write(pkginfo, "pkgsinfo", pkginfo_path)
@@ -926,6 +974,13 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
                     LOGGER.info(f"Rollback successful: deleted {pkg_path}")
                 except Exception as rollback_err:
                     LOGGER.error(f"CRITICAL: Rollback failed for {pkg_path}: {rollback_err}")
+
+                # Best-effort rollback for icon if we wrote one
+                if icon_path_written:
+                    try:
+                        MunkiRepo.delete('icons', icon_path_written)
+                    except Exception:
+                        pass
                 return Response({'error': f'Failed to write pkginfo: {str(err)}'}, status=500)
 
             # Success!
@@ -955,6 +1010,11 @@ class PkgsDetailAPIView(GenericAPIView, ListModelMixin):
                 try:
                     MunkiRepo.delete('pkgsinfo', pkginfo_path_written)
                     LOGGER.info(f"Cleaned up partial pkginfo: {pkginfo_path_written}")
+                except Exception:
+                    pass
+            if icon_path_written:
+                try:
+                    MunkiRepo.delete('icons', icon_path_written)
                 except Exception:
                     pass
             return Response({'error': f'Failed to process upload: {str(e)}'}, status=500)

@@ -1,15 +1,14 @@
-"""
-Unit tests for API module
-"""
-from django.test import TestCase, RequestFactory
-from django.contrib.auth.models import User
-from rest_framework.test import APITestCase, APIRequestFactory
-from rest_framework import status
-from unittest.mock import patch, MagicMock, mock_open
-import tempfile
-import os
+"""Unit tests for API module."""
 
-from api.views import PkgsDetailAPIView
+import os
+import tempfile
+from unittest.mock import MagicMock, patch
+
+from django.contrib.auth.models import User
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APITestCase
+
 from api.models import MunkiRepo
 
 
@@ -20,36 +19,30 @@ class MunkiRepoTests(TestCase):
         """Set up test fixtures"""
         self.test_data = b"test data"
 
-    @patch('api.models.MunkiRepo._get_plugin')
-    def test_read_file(self, mock_plugin):
-        """Test reading a file from the repo"""
-        mock_plugin_instance = MagicMock()
-        mock_plugin_instance.get.return_value = b"plist data"
-        mock_plugin.return_value = mock_plugin_instance
+    @patch('api.models.readPlistFromString')
+    @patch('api.models.repo')
+    def test_read_file(self, mock_repo, mock_read_plist):
+        """Test reading a plist from the repo."""
+        mock_repo.get.return_value = b"plist data"
+        mock_read_plist.return_value = {"ok": True}
 
         result = MunkiRepo.read('catalogs', 'test.plist')
-        self.assertIsNotNone(result)
+        self.assertEqual(result, {"ok": True})
 
-    @patch('api.models.MunkiRepo._get_plugin')
-    def test_list_files(self, mock_plugin):
-        """Test listing files in the repo"""
-        mock_plugin_instance = MagicMock()
-        mock_plugin_instance.list.return_value = ['file1.plist', 'file2.plist']
-        mock_plugin.return_value = mock_plugin_instance
+    @patch('api.models.repo')
+    def test_list_files(self, mock_repo):
+        """Test listing files in the repo."""
+        mock_repo.itemlist.return_value = ['file1.plist', 'file2.plist']
 
         result = MunkiRepo.list('catalogs')
         self.assertEqual(len(result), 2)
         self.assertIn('file1.plist', result)
 
-    @patch('api.models.MunkiRepo._get_plugin')
-    def test_write_file(self, mock_plugin):
-        """Test writing a file to the repo"""
-        mock_plugin_instance = MagicMock()
-        mock_plugin_instance.writedata.return_value = True
-        mock_plugin.return_value = mock_plugin_instance
-
-        result = MunkiRepo.writedata('catalogs', 'test.plist', self.test_data)
-        self.assertTrue(result)
+    @patch('api.models.repo')
+    def test_write_file(self, mock_repo):
+        """Test writing data to the repo."""
+        MunkiRepo.writedata(self.test_data, 'catalogs', 'test.plist')
+        mock_repo.put.assert_called_once()
 
 
 class PackageUploadTests(APITestCase):
@@ -57,21 +50,21 @@ class PackageUploadTests(APITestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.factory = APIRequestFactory()
-        self.user = User.objects.create_user(
+        self.user = User.objects.create_superuser(
             username='testuser',
             password='testpass123',
-            is_staff=True
+            email='test@example.com',
         )
 
     def test_upload_requires_authentication(self):
         """Test that package upload requires authentication"""
-        response = self.client.post('/api/pkgs/packages/', {})
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        response = self.client.post('/api/pkgs/apps/TestApp.pkg', {})
+        # LoginRequiredMiddleware redirects unauthenticated requests
+        self.assertEqual(response.status_code, 302)
 
     def test_upload_missing_file(self):
         """Test upload with missing file"""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         response = self.client.post('/api/pkgs/packages/apps/', {})
         # Should fail because no file provided
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN])
@@ -80,7 +73,7 @@ class PackageUploadTests(APITestCase):
     @patch('api.views.MunkiRepo')
     def test_upload_invalid_file_type(self, mock_repo, mock_magic):
         """Test upload with invalid file type"""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
 
         # Create a fake file
         fake_file = tempfile.NamedTemporaryFile(suffix='.txt', delete=False)
@@ -104,7 +97,7 @@ class PackageUploadTests(APITestCase):
 
     def test_upload_path_traversal_protection(self):
         """Test that path traversal attacks are blocked"""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
 
         # Test various path traversal attempts
         malicious_paths = [
@@ -127,7 +120,7 @@ class PackageUploadTests(APITestCase):
     @patch('api.views.makepkginfo')
     def test_upload_rollback_on_pkginfo_failure(self, mock_makepkginfo, mock_repo):
         """Test that package is rolled back if pkginfo write fails"""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
 
         # Mock makepkginfo to succeed
         mock_makepkginfo.return_value = {
@@ -143,7 +136,9 @@ class PackageUploadTests(APITestCase):
 
         # Create test file
         test_file = tempfile.NamedTemporaryFile(suffix='.pkg', delete=False)
-        test_file.write(b"fake package data")
+        # When libmagic isn't available, the view falls back to a minimal
+        # XAR signature check for PKG uploads.
+        test_file.write(b"xar!" + b"fake package data")
         test_file.close()
 
         try:
@@ -166,7 +161,7 @@ class PackageUploadTests(APITestCase):
     @patch('api.views.makepkginfo')
     def test_upload_dmg_fallback_when_pkginfo_fails(self, mock_makepkginfo, mock_repo):
         """DMG uploads should still succeed when pkginfo inspection fails."""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
 
         mock_makepkginfo.side_effect = Exception("Could not find a supported installer item")
 
@@ -191,6 +186,56 @@ class PackageUploadTests(APITestCase):
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertIn('pkginfo_path', response.data)
             self.assertIn('pkg_path', response.data)
+        finally:
+            os.unlink(test_file.name)
+
+    @patch('api.views.MunkiRepo')
+    @patch('api.views.makepkginfo')
+    @patch('api.views.generate_icon_png_bytes')
+    def test_upload_writes_icon_when_extractable(self, mock_icon, mock_makepkginfo, mock_repo):
+        """When icon extraction succeeds, the upload should write an icon and set icon_name."""
+        self.client.force_login(self.user)
+
+        mock_makepkginfo.return_value = {
+            'name': 'TestApp',
+            'version': '1.0',
+            'catalogs': ['testing'],
+        }
+
+        mock_repo.find_matching_pkginfo.return_value = None
+
+        def _list_side_effect(kind):
+            return []
+
+        mock_repo.list.side_effect = _list_side_effect
+        mock_repo.writedata.return_value = True
+        mock_repo.write.return_value = True
+
+        mock_icon.return_value = type('R', (), {'png_bytes': b'png'})()
+
+        test_file = tempfile.NamedTemporaryFile(suffix='.pkg', delete=False)
+        # When libmagic isn't available, the view falls back to a minimal
+        # XAR signature check for PKG uploads.
+        test_file.write(b"xar!" + b"fake package data")
+        test_file.close()
+
+        try:
+            with open(test_file.name, 'rb') as f:
+                response = self.client.post(
+                    '/api/pkgs/apps/TestApp.pkg',
+                    {'file': f},
+                    format='multipart'
+                )
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+            # Verify an icon write occurred
+            icon_writes = [c for c in mock_repo.writedata.call_args_list if len(c.args) >= 3 and c.args[1] == 'icons']
+            self.assertTrue(icon_writes)
+
+            # Verify pkginfo contains icon_name (without extension)
+            written_pkginfo = mock_repo.write.call_args[0][0]
+            self.assertEqual(written_pkginfo.get('icon_name'), 'TestApp')
         finally:
             os.unlink(test_file.name)
 

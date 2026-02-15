@@ -5,6 +5,10 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.prod
+      args:
+        # Controls optional AzureRepo plugin download during image build.
+        # Usage: INSTALL_AZUREREPO_PLUGIN=false docker compose -f docker/docker-compose.prod.yml build munkiwebadmin
+        INSTALL_AZUREREPO_PLUGIN: ${INSTALL_AZUREREPO_PLUGIN:-true}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     restart: unless-stopped
     ports:

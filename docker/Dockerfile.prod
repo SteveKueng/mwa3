@@ -57,12 +57,18 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requir
 # download munkitools
 RUN curl -Lk -o /tmp/munkitools.zip `curl --silent https://api.github.com/repos/munki/munki/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` && unzip /tmp/munkitools.zip -d /tmp/munkitools && rm -rf /tmp/munkitools.zip 
 
-# Install AzureRepo plugin (MunkiAzurePlugin) into the munkitools tree
-RUN curl -Lk -o /tmp/MunkiAzurePlugin.zip `curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` \
-    && unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin \
-    && rm -rf /tmp/MunkiAzurePlugin.zip \
-    && cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py /tmp/munkitools/munki-munki-*/code/client/munkilib/munkirepo/ \
-    && rm -rf /tmp/MunkiAzurePlugin
+# Optional: Install AzureRepo plugin (MunkiAzurePlugin) into the munkitools tree.
+# Disable with: docker build --build-arg INSTALL_AZUREREPO_PLUGIN=false ...
+ARG INSTALL_AZUREREPO_PLUGIN=true
+RUN if [ "$INSTALL_AZUREREPO_PLUGIN" = "true" ]; then \
+        curl -Lk -o /tmp/MunkiAzurePlugin.zip `curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[\",]//g'` \
+        && unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin \
+        && rm -rf /tmp/MunkiAzurePlugin.zip \
+        && cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py /tmp/munkitools/munki-munki-*/code/client/munkilib/munkirepo/ \
+        && rm -rf /tmp/MunkiAzurePlugin; \
+    else \
+        echo "Skipping AzureRepo plugin install (INSTALL_AZUREREPO_PLUGIN=$INSTALL_AZUREREPO_PLUGIN)"; \
+    fi
 
 
 #########
