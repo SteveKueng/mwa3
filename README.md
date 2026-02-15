@@ -4,14 +4,56 @@ MunkiWebAdmin 3 (MWA3) is a Django-based web administration tool for Munki.
 
 ## Deployment Guides
 
-MWA3 supports two common deployment modes:
+MWA3 supports a few common ways to run/deploy:
 
+- **macOS (native)**: run the Django dev server in a local venv (best for Munki admins on macOS).
 - **Docker / Docker Compose**: runs the full stack locally or on a server using the provided production image.
 - **Azure App Service (Zip Deploy / Oryx)**: deploys the repo as a zip artifact; the Dockerfile is not used.
 
 ---
 
-## Guide 1: Docker (Local/Server)
+## Guide 1: macOS (Run Natively)
+
+This is the most convenient way to run MWA3 if you manage Munki on macOS, because Munki’s Python client libraries are available after installing Munki.
+
+### Prerequisites
+
+- macOS
+- Python 3.11+ (3.11/3.12/3.13 are known-good; avoid unreleased/preview versions)
+- Munki installed (so `munkilib` exists under `/usr/local/munki`)
+	- After installing Munki, you should have `/usr/local/munki/munkilib/`
+
+Optional (only if you want stronger MIME detection for uploads):
+
+- Homebrew `libmagic` (`brew install libmagic`)
+
+### Run steps
+
+From the repo root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then start the dev server with the provided script (sets sensible defaults for macOS):
+
+```bash
+./devScripts/startDevServer.sh
+```
+
+Defaults used by the script:
+
+- `MUNKITOOLS_DIR=/usr/local/munki`
+- `MUNKI_REPO_URL=file:///Users/Shared/munkirepo`
+- `MUNKI_REPO_PLUGIN=FileRepo`
+
+It also runs `python manage.py migrate` automatically before starting `runserver`.
+
+---
+
+## Guide 2: Docker (Local/Server)
 
 ### Prerequisites
 
@@ -50,7 +92,7 @@ INSTALL_AZUREREPO_PLUGIN=false docker compose -f docker/docker-compose.prod.yml 
 
 ---
 
-## Guide 2: Azure App Service (Zip Deploy / Oryx)
+## Guide 3: Azure App Service (Zip Deploy / Oryx)
 
 This repo includes a GitHub Actions workflow that produces a zip artifact and deploys it to Azure App Service.
 
@@ -86,44 +128,16 @@ If unset (default), the workflow includes the plugin.
 
 ---
 
-## Guide 3: macOS (Run Natively)
+## Other ways to run MunkiWebAdmin
 
-This is an important variant because Munki’s Python client libraries are readily available on macOS when you install Munki.
+Besides the guides above, these are common ways to start the webadmin depending on what you’re trying to do:
 
-### Prerequisites
+- **Plain Django dev server (any OS)**: activate your venv, configure env vars, then run `python manage.py runserver`.
+- **Gunicorn (no Docker)**: run `gunicorn --bind 0.0.0.0:8000 munkiwebadmin.wsgi` (you’ll usually put Nginx in front for TLS/static files).
+- **Production Docker image entrypoint**: the production container uses `entrypoint.prod.sh` (migrations + gunicorn + nginx).
+- **Azure App Service entrypoint**: Zip Deploy uses `entrypoint.azure.sh` (migrations + collectstatic + gunicorn).
 
-- macOS
-- Python 3.11+ (3.14 is fine too)
-- Munki installed (so `munkilib` exists under `/usr/local/munki`)
-	- After installing Munki, you should have `/usr/local/munki/munkilib/`
-
-Optional (only if you want stronger MIME detection for uploads):
-
-- Homebrew `libmagic` (`brew install libmagic`)
-
-### Run steps
-
-From the repo root:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Then start the dev server with the provided script (sets sane defaults for macOS):
-
-```bash
-./devScripts/startDevServer.sh
-```
-
-Defaults used by the script:
-
-- `MUNKITOOLS_DIR=/usr/local/munki`
-- `MUNKI_REPO_URL=file:///Users/Shared/munkirepo`
-- SQLite database (unless you set Postgres/MySQL env vars)
-
-To use Postgres locally on macOS, set `DB=postgres` + the `DB_*` variables before running the script.
+If you want a “native Linux” setup, you can follow the macOS steps but you’ll need a compatible `munkilib` available on that host (macOS installs it for you; Linux typically doesn’t unless you provide it).
 
 ---
 
@@ -223,6 +237,8 @@ INSTALL_AZUREREPO_PLUGIN=false
 		unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin
 		cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py munkitools/munkilib/munkirepo/
 ```
+
+Note: YAML indentation must be spaces (tabs are invalid). If you copy this snippet, replace the leading tabs with spaces.
 
 ---
 
