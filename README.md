@@ -111,7 +111,7 @@ In Azure Portal → Web App → Configuration → Application settings, set the 
 Set the Web App Startup Command to:
 
 ```bash
-./entrypoint.azure.sh
+exec sh /tmp/*/entrypoint.azure.sh
 ```
 
 If the app fails at startup with an error like:
