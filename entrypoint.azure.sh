@@ -20,12 +20,9 @@ if [ "${MWA_STARTUP_DEBUG:-0}" = "1" ]; then
 fi
 
 # Install 7z if not present and allowed by environment.
-if ! command -v 7z >/dev/null 2>&1; then
-  echo "[mwa] 7z not found"
-  if [ "${MWA_TRY_INSTALL_7Z:-0}" = "1" ] && command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
-    echo "[mwa] Trying to install p7zip-full via apt-get"
-    apt-get update && apt-get install -y --no-install-recommends p7zip-full || true
-  fi
+if [ "${MWA_TRY_INSTALL_7Z:-0}" = "1" ] && command -v apt >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
+  echo "[mwa] Trying to install p7zip-full via apt"
+  apt update && apt install -y p7zip-full || true
 fi
 
 # Azure App Service (zip deploy / Oryx) does not guarantee root access or

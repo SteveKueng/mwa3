@@ -511,7 +511,7 @@ def makepkginfo(installeritem, options):
                     for name in files:
                         filename = os.path.join(path, name)
                         # use os.lstat so we don't follow symlinks
-                        itemsize += int(os.lstat(filename).st_size)
+                        int(os.lstat(filename).st_size)
                 # convert to kbytes
                 itemsize = int(itemsize/1024)
 
