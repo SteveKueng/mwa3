@@ -19,12 +19,6 @@ if [ "${MWA_STARTUP_DEBUG:-0}" = "1" ]; then
 	ls -la /home/site/wwwroot 2>/dev/null || true
 fi
 
-# Install 7z if not present and allowed by environment.
-if [ "${MWA_TRY_INSTALL_7Z:-0}" = "1" ] && command -v apt >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
-  echo "[mwa] Trying to install p7zip-full via apt"
-  apt update && apt install -y p7zip-full || true
-fi
-
 # Azure App Service (zip deploy / Oryx) does not guarantee root access or
 # availability of apt-get at runtime. Keep startup logic pure-Python.
 
@@ -33,6 +27,8 @@ python manage.py migrate --noinput
 python manage.py migrate --noinput --run-syncdb
 
 python manage.py collectstatic --noinput
+
+apt install p7zip-full -y
 
 # Azure provides the port via $PORT (or sometimes WEBSITES_PORT).
 PORT_TO_BIND="${PORT:-${WEBSITES_PORT:-8000}}"
