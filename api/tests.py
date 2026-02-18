@@ -20,27 +20,33 @@ class MunkiRepoTests(TestCase):
         self.test_data = b"test data"
 
     @patch('api.models.readPlistFromString')
-    @patch('api.models.repo')
-    def test_read_file(self, mock_repo, mock_read_plist):
+    @patch('api.models.get_repo')
+    def test_read_file(self, mock_get_repo, mock_read_plist):
         """Test reading a plist from the repo."""
+        mock_repo = MagicMock()
         mock_repo.get.return_value = b"plist data"
+        mock_get_repo.return_value = mock_repo
         mock_read_plist.return_value = {"ok": True}
 
         result = MunkiRepo.read('catalogs', 'test.plist')
         self.assertEqual(result, {"ok": True})
 
-    @patch('api.models.repo')
-    def test_list_files(self, mock_repo):
+    @patch('api.models.get_repo')
+    def test_list_files(self, mock_get_repo):
         """Test listing files in the repo."""
+        mock_repo = MagicMock()
         mock_repo.itemlist.return_value = ['file1.plist', 'file2.plist']
+        mock_get_repo.return_value = mock_repo
 
         result = MunkiRepo.list('catalogs')
         self.assertEqual(len(result), 2)
         self.assertIn('file1.plist', result)
 
-    @patch('api.models.repo')
-    def test_write_file(self, mock_repo):
+    @patch('api.models.get_repo')
+    def test_write_file(self, mock_get_repo):
         """Test writing data to the repo."""
+        mock_repo = MagicMock()
+        mock_get_repo.return_value = mock_repo
         MunkiRepo.writedata(self.test_data, 'catalogs', 'test.plist')
         mock_repo.put.assert_called_once()
 
