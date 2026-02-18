@@ -41,7 +41,8 @@ jobs:
         if: ${{ vars.INSTALL_AZUREREPO_PLUGIN != 'false' }}
         run: curl -Lk -o /tmp/MunkiAzurePlugin.zip `curl --silent https://api.github.com/repos/SteveKueng/MunkiAzurePlugin/releases/latest | /usr/bin/awk '/zipball_url/ { print $2 }' | sed 's/[",]//g'` && unzip /tmp/MunkiAzurePlugin.zip -d /tmp/MunkiAzurePlugin && rm -rf /tmp/MunkiAzurePlugin.zip && cp /tmp/MunkiAzurePlugin/SteveKueng-MunkiAzurePlugin-*/payload/usr/local/munki/munkilib/munkirepo/AzureRepo.py munkitools/munkilib/munkirepo/ && rm -rf /tmp/MunkiAzurePlugin
 
-      
+      - name: Install Zzip dependencies
+        run: apt install p7zip-full -y
 
       - name: Zip artifact for deployment
         run: |
