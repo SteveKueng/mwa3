@@ -511,7 +511,7 @@ def makepkginfo(installeritem, options):
                     for name in files:
                         filename = os.path.join(path, name)
                         # use os.lstat so we don't follow symlinks
-                        int(os.lstat(filename).st_size)
+                        itemsize += int(os.lstat(filename).st_size)
                 # convert to kbytes
                 itemsize = int(itemsize/1024)
 
@@ -1561,7 +1561,7 @@ def copy_pkginfo_to_repo(repo, pkginfo, subdirectory=''):
     arch = determine_arch(pkginfo)
     if arch:
         arch = "-%s" % arch
-    pkginfo_name = '%s-%s%s%s' % (pkginfo['name'], pkginfo['version'],
+    pkginfo_name = (pkginfo['name'], pkginfo['version'],
                             arch, pkginfo_ext)
     pkginfo_path = os.path.join(destination_path, pkginfo_name)
     index = 0
