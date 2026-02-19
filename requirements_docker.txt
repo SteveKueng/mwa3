@@ -4,7 +4,7 @@ gunicorn==23.0.0
 mysqlclient==2.2.8
 django-cors-headers==4.9.0
 requests==2.32.5
-djangorestframework==3.15.2
+djangorestframework==3.16.1
 django-auth-adfs==1.16.0
 setuptools==82.0.0
 python-ldap==3.4.5
