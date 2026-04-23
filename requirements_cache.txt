@@ -2,7 +2,7 @@
 # Install based on your chosen cache backend
 
 # For Redis cache backend
-django-redis>=5.4.0
+django-redis>=6.0.0
 redis>=5.0.0
 
 # For Memcached cache backend
